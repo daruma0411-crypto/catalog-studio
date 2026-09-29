@@ -1,0 +1,8 @@
+{
+  "name": "catalog-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local IDML catalog editorial workspace",
+  "scripts": { "test:browser": "node tests/browser-check.cjs" },
+  "devDependencies": { "playwright": "1.63.0" }
+}

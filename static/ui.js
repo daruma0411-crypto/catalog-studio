@@ -1,0 +1,11 @@
+export const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export const btn=(label,act,cls='',attrs='')=>`<button type="button" class="${cls}" data-act="${act}" ${attrs}>${label}</button>`;
+export const badge=(label,cls='')=>`<span class="badge ${cls}">${esc(label)}</span>`;
+export const empty=t=>`<p class="empty">${esc(t)}</p>`;
+export const field=(label,id,value='',type='text',attrs='')=>`<label for="${id}">${label}</label><input id="${id}" type="${type}" value="${esc(value)}" ${attrs}>`;
+export const textarea=(label,id,value='',rows=4)=>`<label for="${id}">${label}</label><textarea id="${id}" rows="${rows}">${esc(value)}</textarea>`;
+export const roleName=role=>({editor:'販促担当',developer:'開発部門',reader:'社内ユーザー'}[role]||role);
+export const operationName=type=>({edit_text:'文章を上書き',replace_text:'文字列を変更',move:'配置を変更',delete:'削除指定',restore:'削除を取り消し',replace_image:'画像を差し替え',flow_text:'次ページへ文章を送る',add_text:'文章を追加',add_page:'新規ページ',rename_page:'掲載内容を変更',delete_page:'ページを削除',reorder_pages:'台割の順序を変更'}[type]||type);
+export const dateLabel=s=>s?new Date(s).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+export function summary(value){if(value==null)return '—';if(typeof value==='string')return value;if(Array.isArray(value))return value.join(' → ');return value.text??value.name??value.title??(value.bounds?`位置 x:${value.bounds[0]} y:${value.bounds[1]} ／ 幅:${value.bounds[2]} 高さ:${value.bounds[3]}`:JSON.stringify(value));}
+export function threadHTML(t,ctx){const destination={production:'制作会社へ',developer:'開発部門へ',editor:'販促担当へ'}[t.destination];return `<article class="thread"><div class="row">${badge(destination)}${badge(t.status==='open'?'未解決':'解決済み',t.status==='open'?'amber':'neutral')}</div>${t.messages.map(m=>`<div class="message"><strong>${esc(m.author)}</strong> <small>${dateLabel(m.created)}</small><br>${esc(m.text)}</div>`).join('')}<label for="reply-${t.id}">回答・補足</label><textarea id="reply-${t.id}" rows="2"></textarea><div class="row" style="margin-top:8px">${btn('回答を記録','reply','',`data-thread="${t.id}"`)}${ctx.actor.role==='editor'?btn(t.status==='open'?'解決にする':'再確認する','resolve-thread','ghost',`data-thread="${t.id}" data-status="${t.status}"`):''}</div></article>`;}

@@ -1,0 +1,33 @@
+import {esc,btn,badge,empty,field,textarea,threadHTML} from './ui.js';
+import {assetURL} from './paper.js';
+
+export function railHTML(ctx){
+ const st=ctx.state;
+ let body='';
+ if(ctx.railTab==='pages')body=st.document.pages.map((p,i)=>`<button class="rail-card ${p.id===ctx.pageId?'active':''}" data-act="open-page" data-page="${p.id}">${p.reference_asset?`<img src="${assetURL(ctx,p.reference_asset)}" alt="ページの縮小表示">`:''}<strong>${i+1} · ${esc(p.title)}</strong><small>表示 p.${esc(p.label)}${p.original?'':' ／ 新規'}</small></button>`).join('');
+ else if(ctx.railTab==='assets')body=`<h3>原稿と素材</h3>${attachmentList(ctx)}<label for="asset-upload">Excel・画像・原稿を追加</label><input type="file" id="asset-upload" multiple accept=".xlsx,.csv,.tsv,.pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.psd">`;
+ else body=`<h3>開発からの受け取り</h3><small>未反映の原稿を、対象の紙面へ</small>${(st.submissions||[]).map(s=>`<button class="rail-card" data-act="source-detail" data-submission="${s.id}">${badge(({received:'受け取り',checking:'確認中',applied:'反映済み'})[s.status],s.status==='checking'?'amber':'')}<strong>${esc(s.title)}</strong><small>${esc(s.target||s.text.slice(0,60))}</small></button>`).join('')||empty('まだ受け取り原稿はありません。実際の原稿を追加して始められます。')}${btn('＋ 原稿を登録','go-source','full')}<hr class="divider"><h3>紙面から始める</h3><p class="empty">文字や画像をクリックすると、変更とコメントをその箇所に残せます。</p>`;
+ return `<aside class="rail"><div class="rail-tabs">${['inbox','pages','assets'].map((t,i)=>btn(['受け取り','ページ','素材'][i],'rail-tab',ctx.railTab===t?'active':'',`data-tab="${t}"`)).join('')}</div>${body}</aside>`;
+}
+
+export function attachmentList(ctx){return (ctx.state.attachments||[]).map(a=>`<div class="rail-card">${badge(a.kind==='spreadsheet'?'表データ':a.kind==='image'?'画像':'資料','neutral')}<strong>${esc(a.name)}</strong>${btn('内容を見る','preview-asset','',`data-asset="${a.id}"`)} <a class="text-link" href="${assetURL(ctx,a.id)}" download>保存</a></div>`).join('')||empty('素材を追加すると、ここから差し替えや原稿作成に使えます。');}
+
+export function workspaceHTML(ctx){
+ const page=ctx.currentPage(),reader=ctx.actor.role==='reader';
+ return `<div class="workspace">${reader?`<aside class="rail"><h3>共有カタログ</h3>${ctx.state.document.pages.map((p,i)=>`<button class="rail-card" data-act="open-page" data-page="${p.id}"><strong>${i+1} · ${esc(p.title)}</strong><small>p.${esc(p.label)}</small></button>`).join('')}</aside>`:railHTML(ctx)}<main class="canvas"><div class="canvas-toolbar"><div><strong>p.${esc(page.label)}</strong> <small>掲載順 ${ctx.state.document.pages.indexOf(page)+1}</small></div><select id="render-mode" aria-label="紙面の表示方法">${page.reference_asset&&!reader?'<option value="reference">原版＋変更指示</option><option value="html">編集用HTML</option><option value="original">原版のみ</option>':'<option value="html">編集用HTML</option>'}</select><div class="push row"><span id="zoom-label" class="muted"></span>${btn('−','zoom-out','')}${btn('フィット','zoom-fit','')}${btn('＋','zoom-in','')}</div></div><div class="stage" id="stage"></div><footer class="canvas-footer">${reader?'社内共有された版を表示しています。':'クリックで選択 · 選択後のドラッグで移動 · 元データを残して変更を保存'} <span id="overflow-label"></span></footer></main><aside class="inspector" id="inspector">${inspectorHTML(ctx)}</aside></div>`;
+}
+
+export function inspectorHTML(ctx){
+ const el=ctx.element();
+ if(!el)return `<div class="select-label">紙面を選んで、そこから指示</div><h2>${ctx.actor.role==='reader'?'掲載内容を確認':'どこを変更しますか？'}</h2><p class="empty">文字・価格・画像をクリックしてください。細かいボックス構造を意識せず、対象に直接指示を残せます。</p>${ctx.actor.role==='editor'?btn('＋ 文章を追加','new-text','primary full'):''}<hr class="divider"><h3>読み取りについて</h3><div class="scope">${ctx.state.document.warnings.map(esc).join('<br>')}</div>`;
+ const canEdit=ctx.actor.role==='editor';
+ let controls='';
+ if(canEdit&&el.deleted)controls=`<div class="notice">この要素は削除指定されています。</div>${btn('削除を取り消す','restore-element','primary full')}`;
+ else if(canEdit){
+  if(el.kind==='text')controls=`${textarea('掲載する文章','edit-text',ctx.drafts[el.id]??el.text,Math.min(8,Math.max(3,el.text.split('\n').length+1)))}${btn('上書きして保存','save-text','primary full')}<details style="margin-top:12px"><summary class="muted">文章の一部だけを置き換える</summary>${field('変更前（この枠内の1か所）','replace-before')}${field('変更後','replace-after')}${btn('この文字列だけ変更','replace-text','full')}</details>`;
+  if(el.kind==='image')controls=`<label for="replacement-image">差し替える素材</label><select id="replacement-image"><option value="">素材を選択</option>${Object.values(ctx.state.document.assets).filter(a=>a.kind==='image').map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select>${btn('写真を差し替える','replace-image','primary full')}<label for="asset-upload-inspector">新しい画像を追加</label><input type="file" id="asset-upload-inspector" accept=".png,.jpg,.jpeg,.webp,.psd">`;
+  controls+=`<details style="margin-top:17px"><summary>位置・サイズ・移動先</summary><div class="num-grid">${['左から（mm）','上から（mm）','幅（mm）','高さ（mm）'].map((l,i)=>field(l,'bound-'+i,(el.bounds[i]*25.4/72).toFixed(1),'number','step="0.5"')).join('')}</div>${btn('配置を保存','save-bounds','full')}<label for="move-page">移動先のページ</label><select id="move-page">${ctx.state.document.pages.map(p=>`<option value="${p.id}" ${p.id===ctx.pageId?'selected':''}>${esc(p.title)} · p.${esc(p.label)}</option>`).join('')}</select>${btn('選んだページへ移動','move-page','full')}</details>${el.kind==='text'?`${btn('続きを次ページへ送る','flow-dialog','full')}<p class="keyboard-note">ブラウザの収まりを見積もり、送り始める位置を確認できます。</p>`:''}<div class="button-row">${btn('削除を指示','delete-dialog','danger')}${btn('＋ 文章','new-text','ghost')}</div>`;
+ }
+ const threads=(ctx.state.threads||[]).filter(t=>t.element_id===el.id);
+ return `<div class="row"><span class="select-label">${el.kind==='image'?'選択した画像':'選択した文章'}</span>${el.modified?badge('変更あり'):badge('原版','neutral')}</div><h3>${esc(el.kind==='image'?el.name:el.text.replace(/\n/g,' ').slice(0,60)||'空の文章枠')}</h3>${!canEdit?`<div class="excerpt">${esc(el.text||el.name)}</div>`:''}${controls}${ctx.actor.role!=='reader'?`<hr class="divider"><h3>この箇所のやり取り</h3><label for="comment-destination">宛先</label><select id="comment-destination"><option value="production">制作会社へのコメント</option><option value="developer">開発部門への確認</option><option value="editor">販促担当への確認</option></select>${textarea('指示・確認したいこと','element-comment','',3)}${btn('対象にコメントを残す','add-element-comment','full')}${threads.map(t=>threadHTML(t,ctx)).join('')}`:''}<details class="source-ref"><summary>元データとのつながり</summary>要素：${esc(el.id)}<br>Story：${esc(el.source?.story_id||'新規')}<br>セル：${esc(el.source?.cell_id||'—')}<br>連結：${el.source?.linked?'位置の確認が必要':'なし'}</details>`;
+}

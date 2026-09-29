@@ -1,0 +1,27 @@
+# Imported catalogs, customer assets, revisions and local QA evidence
+/data/
+/data-live/
+/.qa/
+/out/
+/samples/
+*.idml
+*.indd
+*.psd
+*.pdf
+*.zip
+*.db
+*.db-*
+*.sqlite*
+*.log
+
+# Local credentials and environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+node_modules/
+.DS_Store
+Thumbs.db
