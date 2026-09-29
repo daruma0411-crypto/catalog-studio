@@ -12,7 +12,7 @@ def element_html(el,asset_prefix='assets/',reference=False):
     kind=el['kind']
     body=''
     if kind=='text':
-        if reference and not el.get('modified'): return ''
+        if reference and not (el.get('modified') or el.get('position_modified')): return ''
         style+=f'font-size:{el.get("font_size",8)}px;'
         style+='background:'+ ('#ffffff' if el.get('modified') else escape(el.get('fill','transparent'),quote=True))+';'
         if el.get('padding'): style+='padding:'+' '.join(str(v)+'px' for v in el['padding'])+';'
@@ -21,11 +21,11 @@ def element_html(el,asset_prefix='assets/',reference=False):
             body=''.join(f'<span style="font-size:{r.get("size",8)}px;color:{escape(r.get("color","#202020"),quote=True)};font-weight:{700 if r.get("bold") else 400}">{escape(r["text"])}</span>' for r in el['runs'])
         else: body=escape(el.get('text',''))
     elif kind=='image':
-        if reference and not el.get('modified'): return ''
+        if reference and not (el.get('modified') or el.get('position_modified')): return ''
         aid=el.get('asset_id')
         body=f'<img src="{escape(asset_prefix+aid,quote=True)}" alt="{escape(el.get("name","画像"),quote=True)}">' if aid else '<small>画像未解決</small>'
     elif kind=='shape':
-        if reference:return ''
+        if reference and not el.get('position_modified'):return ''
         style+=f'background:{escape(el.get("fill","transparent"),quote=True)};border:{el.get("stroke_width",0)}px solid {escape(el.get("stroke","#333333"),quote=True)};'
     else:
         if reference:return ''
@@ -45,7 +45,7 @@ def page_html(page,asset_prefix='../assets/',reference=False):
         for region in page.get('removed_regions',[]):body+=mask(region['bounds'])
     for e in page['elements']:
         source=e.get('source',{})
-        if reference and (e.get('modified') or e.get('deleted')) and source.get('page_id')==page['id'] and source.get('original_bounds') and source['original_bounds']!=e['bounds']:
+        if reference and (e.get('modified') or e.get('position_modified') or e.get('deleted')) and source.get('page_id')==page['id'] and source.get('original_bounds') and source['original_bounds']!=e['bounds']:
             body+=mask(source['original_bounds'])
         if reference and e.get('deleted'):
             x,y,w,h=e['bounds'];body+=f'<div class="element deleted-mark" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px;border:0;background:transparent">削除指示</div>'

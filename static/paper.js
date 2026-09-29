@@ -1,4 +1,5 @@
 import {esc} from './ui.js';
+import {attachGroupSelection} from './groups.js';
 
 export function assetURL(ctx,id){return `/api/catalogs/${ctx.state.id}/assets/${encodeURIComponent(id)}`;}
 function boundsStyle(b){return `left:${b[0]}px;top:${b[1]}px;width:${Math.max(b[2],1)}px;height:${Math.max(b[3],1)}px;`;}
@@ -12,9 +13,9 @@ export function paperContent(ctx,page){
  if(reference&&!original)for(const r of page.removed_regions||[])html+=`<div class="element moved-mask" style="${boundsStyle(r.bounds)}"></div>`;
  page.elements.forEach((e,i)=>{
   const b=e.bounds;
-  if(reference&&!original&&(e.modified||e.deleted)&&e.source?.page_id===page.id&&e.source?.original_bounds&&JSON.stringify(e.source.original_bounds)!==JSON.stringify(b))html+=`<div class="element moved-mask" style="${boundsStyle(e.source.original_bounds)}"></div>`;
+  if(reference&&!original&&(e.modified||e.position_modified||e.deleted)&&e.source?.page_id===page.id&&e.source?.original_bounds&&JSON.stringify(e.source.original_bounds)!==JSON.stringify(b))html+=`<div class="element moved-mask" style="${boundsStyle(e.source.original_bounds)}"></div>`;
   if(e.deleted){if(reference&&!original)html+=`<div class="element deleted-mask" style="${boundsStyle(b)}border:0;background:transparent;">削除指定</div>`;return;}
-  if(!reference||(!original&&e.modified)){
+  if(!reference||(!original&&(e.modified||e.position_modified))){
    let inner='',style=boundsStyle(b)+`z-index:${i+1};`;
    if(e.kind==='text'){
     style+=`font-size:${e.font_size||8}px;background:${e.modified?'white':esc(e.fill||'transparent')};`;
@@ -39,6 +40,7 @@ export function renderPaper(ctx){
  ctx.scale=scale;
  stage.innerHTML=`<div class="page-shell" style="width:${page.width*scale}px;height:${page.height*scale}px"><div class="paper" id="paper" style="width:${page.width}px;height:${page.height}px;transform:scale(${scale})">${paperContent(ctx,page)}</div></div>`;
  const input=document.getElementById('zoom-label');if(input)input.textContent=Math.round(scale*100)+'%';
+ attachGroupSelection(ctx,renderPaper);
  stage.querySelectorAll('[data-element]').forEach(hit=>{
   hit.addEventListener('click',()=>{if(ctx.dragMoved)return;ctx.selection=hit.dataset.element;ctx.renderInspector();stage.querySelectorAll('.element-hit').forEach(el=>el.classList.toggle('selected',el.dataset.element===ctx.selection));});
   if(ctx.actor.role!=='editor')return;

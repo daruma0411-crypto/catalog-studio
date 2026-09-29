@@ -1,0 +1,35 @@
+const {chromium}=require('playwright');
+const {spawn,execFileSync}=require('node:child_process');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'..'),python=process.env.CATALOG_PYTHON||'python';
+fs.mkdirSync(path.join(root,'.qa'),{recursive:true});
+const data=fs.mkdtempSync(path.join(root,'.qa','groups-'));
+const child=spawn(python,['-u','server.py','--port','8878','--data',data],{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe']});
+const log=fs.createWriteStream(path.join(data,'server.log'));child.stdout.pipe(log);child.stderr.pipe(log);
+(async()=>{let browser;try{
+ for(let i=0;i<60;i++){try{if((await fetch('http://127.0.0.1:8878/health')).ok)break;}catch{}await new Promise(r=>setTimeout(r,300));}
+ browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1480,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:8878');await page.locator('[data-act="demo-login"][data-role="editor"]').click();
+ const fixture=execFileSync(python,['-c',"import sys,base64;sys.path.insert(0,'tests');from test_importer import fixture;print(base64.b64encode(fixture()).decode())"],{cwd:root,encoding:'utf8'}).trim();
+ await page.locator('#catalog-upload').setInputFiles({name:'fixture.idml',mimeType:'application/octet-stream',buffer:Buffer.from(fixture,'base64')});
+ await page.locator('#paper').waitFor();await page.locator('.busy-cover').waitFor({state:'hidden'});
+ await page.evaluate(async()=>{const session=await (await fetch('/api/session')).json();const list=await (await fetch('/api/catalogs')).json();let st=await (await fetch('/api/catalogs/'+list[0].id)).json();for(const bounds of [[120,90,60,20],[20,160,60,20]]){st=await(await fetch('/api/catalogs/'+st.id+'/operations',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrf},body:JSON.stringify({version:st.version,operation:{type:'add_text',page_id:st.document.pages[0].id,text:'追加価格',bounds}})})).json();}});
+ await page.locator('[data-act="reload"]').click();await page.locator('[data-act="group-start"]').click();
+ const paper=await page.locator('#paper').boundingBox(),scale=paper.width/200;
+ const point=(x,y)=>[paper.x+x*scale,paper.y+y*scale];
+ await page.mouse.move(...point(5,25));await page.mouse.down();await page.mouse.move(...point(112,72),{steps:8});await page.mouse.up();
+ assert.equal(await page.locator('.group-selection-ring').count(),1);
+ await page.mouse.click(...point(140,100));assert.equal(await page.locator('.group-selection-ring').count(),2);
+ await page.mouse.click(...point(140,100));assert.equal(await page.locator('.group-selection-ring').count(),1);
+ await page.mouse.click(...point(140,100));
+ await page.locator('#group-name').fill('離れた商品A');await page.locator('[data-act="group-save"]').click();await page.locator('.busy-cover').waitFor({state:'hidden'});
+ await page.mouse.move(...point(50,50));await page.mouse.down();await page.mouse.move(...point(55,55),{steps:8});await page.mouse.up();await page.locator('.busy-cover').waitFor({state:'hidden'});
+ let state=await page.evaluate(async()=>{const list=await(await fetch('/api/catalogs')).json();return(await fetch('/api/catalogs/'+list[0].id)).json();});
+ assert.equal(state.document.groups.length,1);assert.ok(Math.abs(state.document.pages[0].elements[0].bounds[0]-15)<1);
+ await page.reload();await page.locator('[data-act="group-open"]').click();assert.equal(await page.locator('.group-selection-ring').count(),2);
+ await page.screenshot({path:path.join(data,'group-selected.png'),fullPage:true});
+ await page.locator('[data-act="group-exit"]').click();await page.locator('[data-act="nav"][data-view="plan"]').click();await page.locator('[data-act="new-page"]').click();await page.locator('#new-page-title').fill('移動先');await page.locator('[data-act="confirm-new-page"]').click();await page.locator('.busy-cover').waitFor({state:'hidden'});
+ await page.locator('[data-act="nav"][data-view="edit"]').click();await page.locator('[data-act="rail-tab"][data-tab="pages"]').click();await page.locator('[data-act="open-page"]').first().click();await page.locator('[data-act="group-open"]').click();await page.locator('#group-page').selectOption({label:'移動先'});await page.locator('[data-act="group-move"]').click();await page.locator('.busy-cover').waitFor({state:'hidden'});assert.equal(await page.locator('.group-selection-ring').count(),2);
+ await page.locator('[data-act="group-ungroup"]').click();await page.locator('.busy-cover').waitFor({state:'hidden'});assert.equal(await page.locator('[data-act="group-open"]').count(),0);
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({result:'PASS',data,checks:['marquee','disjoint toggle','create','drag','reload','cross-page','ungroup']}));
+}finally{if(browser)await browser.close();child.kill();log.end();}})().catch(e=>{console.error(e);process.exitCode=1});

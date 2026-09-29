@@ -117,6 +117,9 @@ class Service:
                 event=db.execute('SELECT * FROM events WHERE catalog_id=? ORDER BY id DESC LIMIT 1',(cid,)).fetchone()
                 if not event or event['actor']!=actor.id or event['action'] in ('undo','publish'): raise ValueError('直前の自分の編集のみ取り消せます。公開の取り消しはできません。')
                 state=json.loads(event['before_state'])
+            elif kind in ('create_group','move_group','ungroup'):
+                from .groups import apply_group
+                apply_group(state,actor,op)
             elif kind=='reset_document':
                 original=json.loads(row['original'])
                 # Keep uploaded materials available for the next editing pass.

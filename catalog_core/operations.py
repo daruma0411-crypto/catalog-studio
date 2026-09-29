@@ -167,6 +167,7 @@ def apply(state,actor,op):
 def public_document(document):
     doc=copy.deepcopy(document)
     doc.pop('stories',None)
+    doc.pop('groups',None)
     used=set()
     for p in doc['pages']:
         p.pop('reference_asset',None)

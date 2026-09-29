@@ -2,22 +2,24 @@ import {esc,btn,badge,empty,field,textarea,roleName,threadHTML} from './ui.js';
 import {renderPaper,assetURL,estimateSplit,overflowCount} from './paper.js';
 import {workspaceHTML,inspectorHTML} from './workspace.js';
 import {sourceHTML,planHTML,researchHTML,handoffHTML} from './views.js';
+import {groupInspector,groupToolbar,groupAction} from './groups.js';
 
 const root=document.getElementById('app'),modal=document.getElementById('modal');
 const $=id=>document.getElementById(id);
 const demo={editor:['promo','promo-demo'],developer:['development','development-demo'],reader:['reader','reader-demo']};
 let resizeObserver,toastTimer;
 const ctx={actor:null,csrf:'',state:null,catalogs:[],pageId:null,selection:null,view:'edit',railTab:'inbox',mode:'reference',zoom:'fit',scale:1,searchQuery:'ERD9717WA',searchResult:null,drafts:{},dragMoved:false,
- notify,
+ notify,render,
  currentPage(){return this.state?.document.pages.find(p=>p.id===this.pageId)||this.state?.document.pages[0]},
  element(){return this.currentPage()?.elements.find(e=>e.id===this.selection)},
- renderInspector(){const el=$('inspector');if(el)el.innerHTML=inspectorHTML(this)},
+ renderInspector(){const el=$('inspector');if(el)el.innerHTML=this.groupMode?groupInspector(this):inspectorHTML(this)},
  async api(path,method='GET',data){const res=await fetch(path,{method,headers:{'Content-Type':'application/json','X-CSRF-Token':this.csrf},...(data?{body:JSON.stringify(data)}:{})});const body=await res.json();if(!res.ok){const error=new Error(body.error||'処理に失敗しました。');error.status=res.status;throw error;}return body;},
  async op(operation,message='保存しました'){
   busy('変更を保存しています…');
   try{this.state=await this.api(`/api/catalogs/${this.state.id}/operations`,'POST',{version:this.state.version,operation});
    if(operation.type==='edit_text'||operation.type==='replace_text')delete this.drafts[operation.element_id];
-   if(operation.type==='reset_document'){this.pageId=this.state.document.pages[0].id;this.selection=null;this.drafts={};this.searchResult=null;this.view='edit';}
+   if(operation.type==='reset_document'){this.pageId=this.state.document.pages[0].id;this.selection=null;this.drafts={};this.searchResult=null;this.view='edit';this.groupMode=false;this.groupId=null;this.groupIds=[];}
+   else if(operation.type==='move_group'){this.pageId=this.state.changes.at(-1).destination_page_id;}
    else if(operation.type==='flow_text'){const c=this.state.changes.at(-1);this.pageId=c.destination_page_id;this.selection=c.continuation.id;}
    else if(operation.type==='add_page'){this.pageId=this.state.changes.at(-1).page_id;this.selection=null;}
    else if(this.selection){const p=this.state.document.pages.find(p=>p.elements.some(e=>e.id===this.selection));if(p)this.pageId=p.id;}
@@ -40,11 +42,16 @@ function render(){
  if(!ctx.actor){root.innerHTML=loginHTML();return;}
  if(!ctx.state){root.innerHTML=headerHTML()+`<main class="blank-app"><section class="panel"><h1>${ctx.actor.role==='reader'?'まだ共有されたカタログがありません':'カタログから始めましょう'}</h1><p class="empty">${ctx.actor.role==='reader'?'販促担当が社内閲覧用の版を共有すると、ここから閲覧・検索できます。':'IDML、またはIDML・画像・PDFをまとめたZIPを取り込めます。原版を残して編集を始めます。'}</p>${ctx.actor.role==='editor'?btn('IDML・ZIPを取り込む','import','primary'):''}</section></main>`;return;}
  const page=ctx.currentPage();ctx.pageId=page.id;
+ if(ctx.groupMode&&ctx.actor.role!=='editor')ctx.groupMode=false;
+ if(ctx.groupId&&!(ctx.state.document.groups||[]).some(g=>g.id===ctx.groupId))ctx.groupId=null;
+ if(ctx.groupMode&&ctx.groupIds?.some(id=>!page.elements.some(e=>e.id===id&&!e.deleted))){ctx.groupMode=false;ctx.groupIds=[];ctx.groupId=null;}
  if(ctx.actor.role==='reader')ctx.mode='html';
  const content=ctx.view==='edit'?workspaceHTML(ctx):ctx.view==='source'?sourceHTML(ctx):ctx.view==='plan'?planHTML(ctx):ctx.view==='research'?researchHTML(ctx):handoffHTML(ctx);
  root.innerHTML=headerHTML()+content;
  if(ctx.actor.role==='editor')root.querySelector('[data-act="undo"]').insertAdjacentHTML('afterend',btn('すべて元に戻す','reset-dialog','ghost danger'));
  if(ctx.view==='edit'){
+  if(ctx.actor.role==='editor')document.querySelector('.canvas-toolbar').insertAdjacentHTML('afterend',groupToolbar(ctx));
+  if(ctx.groupMode)ctx.renderInspector();
   if(!page.reference_asset)ctx.mode='html';
   $('render-mode').value=ctx.mode;
   renderPaper(ctx);
@@ -78,6 +85,7 @@ function flowDialog(){
 function updateFlowPreview(){const el=ctx.element();if(!el||!$('flow-count'))return;const chars=[...el.text],n=Number($('flow-count').value);$('flow-head').textContent=chars.slice(0,n).join('');$('flow-tail').textContent=chars.slice(n).join('');}
 
 async function act(action,target){
+ if(action.startsWith('group-'))return groupAction(ctx,action,target);
  const el=ctx.element();
  switch(action){
  case 'demo-login':return login(...demo[target.dataset.role]);
