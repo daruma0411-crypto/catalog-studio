@@ -63,6 +63,38 @@ class ServiceTests(unittest.TestCase):
         st=s.apply_operation(self.cid,self.editor,st['version'],{'type':'resolve_thread','thread_id':thread})
         self.assertEqual(st['threads'][0]['status'],'resolved')
 
+    def test_reset_restores_pages_preserves_materials_and_release_and_is_undoable(self):
+        s=self.service;st=s.get_catalog(self.cid,self.editor)
+        original=st['document']['pages'];eid=original[0]['elements'][0]['id']
+        st=s.apply_operation(self.cid,self.editor,st['version'],{'type':'edit_text','element_id':eid,'text':'RELEASED'})
+        st=s.apply_operation(self.cid,self.editor,st['version'],{'type':'publish'})
+        st=s.attach(self.cid,self.editor,st['version'],'input.csv',b'a,b\n1,2')
+        st=s.apply_operation(self.cid,self.dev,st['version'],{'type':'add_submission','title':'原稿','text':'説明'})
+        st=s.apply_operation(self.cid,self.editor,st['version'],{'type':'add_page','title':'追加'})
+        pid=st['document']['pages'][-1]['id']
+        st=s.apply_operation(self.cid,self.editor,st['version'],{'type':'comment','page_id':pid,'text':'新規ページの指示'})
+        before=st
+        st=s.apply_operation(self.cid,self.editor,st['version'],{'type':'reset_document'})
+        self.assertEqual(st['document']['pages'],original)
+        self.assertEqual(st['changes'],[])
+        self.assertEqual(st['attachments'],before['attachments'])
+        self.assertEqual(st['submissions'],before['submissions'])
+        self.assertEqual(st['threads'][0]['messages'],before['threads'][0]['messages'])
+        self.assertIsNone(st['threads'][0]['page_id'])
+        self.assertEqual(st['threads'][0]['previous_target']['page_id'],pid)
+        self.assertEqual(s.search(self.cid,self.reader,'RELEASED')['occurrence_count'],1)
+        st=s.apply_operation(self.cid,self.editor,st['version'],{'type':'undo'})
+        for key in ('document','changes','attachments','submissions','threads'):self.assertEqual(st[key],before[key])
+
+    def test_reset_requires_editor_and_current_version(self):
+        from catalog_core.service import ConflictError
+        s=self.service;st=s.get_catalog(self.cid,self.editor)
+        for actor in (self.dev,self.reader):
+            with self.assertRaises(PermissionError):s.apply_operation(self.cid,actor,st['version'],{'type':'reset_document'})
+        st=s.apply_operation(self.cid,self.editor,st['version'],{'type':'add_page','title':'追加'})
+        with self.assertRaises(ConflictError):s.apply_operation(self.cid,self.editor,1,{'type':'reset_document'})
+        self.assertEqual(len(s.get_catalog(self.cid,self.editor)['document']['pages']),2)
+
     def test_login_and_explicit_role(self):
         session=self.service.login('promo','promo-demo')
         actor=self.service.authenticate(session['token'])

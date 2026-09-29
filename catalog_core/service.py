@@ -117,6 +117,24 @@ class Service:
                 event=db.execute('SELECT * FROM events WHERE catalog_id=? ORDER BY id DESC LIMIT 1',(cid,)).fetchone()
                 if not event or event['actor']!=actor.id or event['action'] in ('undo','publish'): raise ValueError('直前の自分の編集のみ取り消せます。公開の取り消しはできません。')
                 state=json.loads(event['before_state'])
+            elif kind=='reset_document':
+                original=json.loads(row['original'])
+                # Keep uploaded materials available for the next editing pass.
+                original['assets']={**state['document']['assets'],**original['assets']}
+                pages={p['id']:p for p in original['pages']}
+                elements={e['id']:p['id'] for p in original['pages'] for e in p['elements']}
+                for thread in state['threads']:
+                    eid=thread.get('element_id');pid=thread.get('page_id')
+                    if eid or pid:
+                        thread['status']='open'
+                        if eid in elements:thread['page_id']=elements[eid]
+                        elif eid or pid not in pages:
+                            thread['previous_target']={'element_id':eid,'page_id':pid}
+                            thread['element_id']=None;thread['page_id']=None
+                for submission in state['submissions']:
+                    if submission['status']=='applied':submission['status']='checking'
+                state['document']=original
+                state['changes']=[]
             elif kind=='publish':
                 pending=sum(t['status']=='open' for t in state['threads'])
                 if pending: raise ValueError(f'未解決の確認事項が{pending}件あります。解決してから社内共有してください。')

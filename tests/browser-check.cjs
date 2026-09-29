@@ -57,6 +57,17 @@ const log=fs.createWriteStream(path.join(data,'server.log'));child.stdout.pipe(l
   assert.ok(fs.statSync(path.join(output,'instructions.zip')).size>1000);
   await page.locator('[data-act="publish"]').click();await page.locator('.busy-cover').waitFor({state:'hidden'});
   await page.screenshot({path:path.join(output,'handoff.png'),fullPage:true});
+  await page.locator('[data-act="reset-dialog"]').click();
+  await page.locator('dialog [data-act="close-modal"]').click();
+  await page.locator('[data-act="reset-dialog"]').click();
+  await page.locator('[data-act="confirm-reset"]').click();
+  await page.locator('.busy-cover').waitFor({state:'hidden'});
+  await page.locator('dialog').waitFor({state:'hidden'});
+  await page.locator('[data-act="nav"][data-view="plan"]').click();
+  assert.equal(await page.locator('.page-card').count(),1);
+  await page.locator('[data-act="undo"]').click();
+  await page.locator('.busy-cover').waitFor({state:'hidden'});
+  assert.equal(await page.locator('.page-card').count(),3);
   await page.locator('#account-select').selectOption('reader');await page.locator('.busy-cover').waitFor({state:'hidden'});await page.locator('#search-form').evaluate(e=>e.requestSubmit());await page.locator('.search-result').first().waitFor();assert.equal(await page.locator('.search-result').count(),2);
   assert.equal(await page.locator('[data-act="nav"][data-view="source"]').count(),0);
   await page.locator('#account-select').selectOption('developer');await page.locator('.busy-cover').waitFor({state:'hidden'});assert.equal(await page.locator('[data-act="publish"]').count(),0);assert.equal(await page.locator('#submission-title').count(),1);

@@ -17,7 +17,8 @@ const ctx={actor:null,csrf:'',state:null,catalogs:[],pageId:null,selection:null,
   busy('変更を保存しています…');
   try{this.state=await this.api(`/api/catalogs/${this.state.id}/operations`,'POST',{version:this.state.version,operation});
    if(operation.type==='edit_text'||operation.type==='replace_text')delete this.drafts[operation.element_id];
-   if(operation.type==='flow_text'){const c=this.state.changes.at(-1);this.pageId=c.destination_page_id;this.selection=c.continuation.id;}
+   if(operation.type==='reset_document'){this.pageId=this.state.document.pages[0].id;this.selection=null;this.drafts={};this.searchResult=null;this.view='edit';}
+   else if(operation.type==='flow_text'){const c=this.state.changes.at(-1);this.pageId=c.destination_page_id;this.selection=c.continuation.id;}
    else if(operation.type==='add_page'){this.pageId=this.state.changes.at(-1).page_id;this.selection=null;}
    else if(this.selection){const p=this.state.document.pages.find(p=>p.elements.some(e=>e.id===this.selection));if(p)this.pageId=p.id;}
    render();notify(message);return this.state;
@@ -42,6 +43,7 @@ function render(){
  if(ctx.actor.role==='reader')ctx.mode='html';
  const content=ctx.view==='edit'?workspaceHTML(ctx):ctx.view==='source'?sourceHTML(ctx):ctx.view==='plan'?planHTML(ctx):ctx.view==='research'?researchHTML(ctx):handoffHTML(ctx);
  root.innerHTML=headerHTML()+content;
+ if(ctx.actor.role==='editor')root.querySelector('[data-act="undo"]').insertAdjacentHTML('afterend',btn('すべて元に戻す','reset-dialog','ghost danger'));
  if(ctx.view==='edit'){
   if(!page.reference_asset)ctx.mode='html';
   $('render-mode').value=ctx.mode;
@@ -94,6 +96,9 @@ async function act(action,target){
  case 'zoom-in':ctx.zoom=Math.min(1.8,ctx.scale+.15);return renderPaper(ctx);
  case 'zoom-out':ctx.zoom=Math.max(.3,ctx.scale-.15);return renderPaper(ctx);
  case 'undo':return ctx.op({type:'undo'},'直前の編集を取り消しました。');
+ case 'close-modal':return closeModal();
+ case 'reset-dialog':return showModal(`<h2>すべて元に戻しますか？</h2><p style="margin-top:16px"><strong>${esc(ctx.state.title)}</strong> の全ページを、取り込み直後の紙面に戻します。</p><p class="notice" style="margin-top:16px">文字・画像・配置・削除・ページ追加・並び順の変更と、未保存の入力を取り消します。現在の制作指示一覧も空になります。</p><p class="muted" style="margin-top:12px">受け取り原稿・素材・やり取り・社内公開済み版は保持します。反映済み原稿と紙面に関するやり取りは再確認に戻します。直後の「元に戻す」で、この復元を取り消せます。</p><div class="button-row">${btn('キャンセル','close-modal','')}${btn('全ページを取り込み直後に戻す','confirm-reset','danger')}</div>`);
+ case 'confirm-reset':await ctx.op({type:'reset_document'},'すべての紙面編集を取り込み直後に戻しました。');closeModal();return;
  case 'save-text':return ctx.op({type:'edit_text',element_id:el.id,text:$('edit-text').value},'文章と変更前後を保存しました。');
  case 'replace-text':return ctx.op({type:'replace_text',element_id:el.id,before:$('replace-before').value,after:$('replace-after').value},'指定した文字列だけを変更しました。');
  case 'save-bounds':return ctx.op({type:'move',element_id:el.id,bounds:[0,1,2,3].map(i=>Number($('bound-'+i).value)*72/25.4)},'位置・サイズを保存しました。');
