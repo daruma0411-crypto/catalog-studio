@@ -13,7 +13,7 @@ export function paperContent(ctx,page){
  page.elements.forEach((e,i)=>{
   const b=e.bounds;
   if(reference&&!original&&(e.modified||e.deleted)&&e.source?.page_id===page.id&&e.source?.original_bounds&&JSON.stringify(e.source.original_bounds)!==JSON.stringify(b))html+=`<div class="element moved-mask" style="${boundsStyle(e.source.original_bounds)}"></div>`;
-  if(e.deleted){if(reference&&!original)html+=`<div class="element deleted-mask" style="${boundsStyle(b)}">削除指定</div>`;return;}
+  if(e.deleted){if(reference&&!original)html+=`<div class="element deleted-mask" style="${boundsStyle(b)}border:0;background:transparent;">削除指定</div>`;return;}
   if(!reference||(!original&&e.modified)){
    let inner='',style=boundsStyle(b)+`z-index:${i+1};`;
    if(e.kind==='text'){

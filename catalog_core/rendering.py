@@ -48,6 +48,6 @@ def page_html(page,asset_prefix='../assets/',reference=False):
         if reference and (e.get('modified') or e.get('deleted')) and source.get('page_id')==page['id'] and source.get('original_bounds') and source['original_bounds']!=e['bounds']:
             body+=mask(source['original_bounds'])
         if reference and e.get('deleted'):
-            x,y,w,h=e['bounds'];body+=f'<div class="element deleted-mark" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">削除指示</div>'
+            x,y,w,h=e['bounds'];body+=f'<div class="element deleted-mark" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px;border:0;background:transparent">削除指示</div>'
         else: body+=element_html(e,asset_prefix,reference)
     return f'<!doctype html><html lang="ja"><meta charset="utf-8"><title>{escape(page["title"])}</title><style>{PAGE_CSS}</style><h1>{escape(page["title"])} · p.{escape(str(page["label"]))}</h1><p>編集用の配置案です。最終的な組版は制作側で確認してください。</p><div class="paper" style="width:{page["width"]}px;height:{page["height"]}px">{body}</div></html>'
