@@ -94,9 +94,8 @@ class Handler(BaseHTTPRequestHandler):
                 service.logout(self.token())
                 return self.send({'ok':True},cookie='catalog_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0')
             if parts==['api','library'] and not mutation:return self.send(service.library(actor))
-            if parts==['api','library-search'] and not mutation:return self.send(service.library_search(actor,query.get('q',[''])[0],query.get('catalog',[])))
-            if parts==['api','campaigns']:
-                return self.send(service.create_campaign(actor,data) if mutation else service.campaigns(actor))
+            if parts in (['api','library-search'],['api','campaigns']):
+                return self.send({'error':'冊子間の連携機能は提供していません。画面を再読み込みしてください。'},410)
             if parts==['api','catalogs']:
                 if not mutation:return self.send(service.list_catalogs(actor))
                 raw=decode_upload(data)

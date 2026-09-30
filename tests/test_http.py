@@ -44,8 +44,9 @@ class HTTPTests(unittest.TestCase):
         status,st=self.call('POST','/api/catalogs',body);self.assertEqual(status,200)
         cid=st['id']
         self.assertEqual(self.call('GET','/api/library')[0],200)
-        self.assertEqual(self.call('GET','/api/library-search?q=ERD9717WA&catalog='+cid)[1]['target_count'],1)
-        self.assertEqual(self.call('GET','/api/campaigns')[1],[])
+        self.assertEqual(self.call('GET','/api/library-search?q=ERD9717WA&catalog='+cid)[0],410)
+        self.assertEqual(self.call('GET','/api/campaigns')[0],410)
+        self.assertEqual(self.call('POST','/api/campaigns',{})[0],410)
         status,products=self.call('GET',f'/api/catalogs/{cid}/products')
         self.assertEqual(status,200);self.assertEqual(products['model_count'],1)
         from urllib.parse import quote
@@ -53,9 +54,9 @@ class HTTPTests(unittest.TestCase):
         status,answer=self.call('GET',inquiry)
         self.assertEqual(status,200);self.assertEqual(answer['kind'],'prices');self.assertEqual(answer['occurrence_count'],1)
         self.login('reader','reader-demo')
-        for path in ['/api/library','/api/library-search?q=ERD9717WA&catalog='+cid,'/api/campaigns']:
+        for path in ['/api/library']:
             self.assertEqual(self.call('GET',path)[0],403)
-        self.assertEqual(self.call('POST','/api/campaigns',{})[0],403)
+        self.assertEqual(self.call('POST','/api/campaigns',{})[0],410)
         self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/products')[0],403)
         self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/products.csv')[0],403)
         self.server.service.reader_preview=True
