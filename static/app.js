@@ -1,3 +1,4 @@
+import {sendChat,resetChat,captureChat,locateChat} from './chat.js';
 import {libraryHTML,libraryAction} from './library.js';
 import {runInquiry} from './inquiry.js';
 import {productsHTML,productAction} from './products.js';
@@ -78,7 +79,7 @@ async function login(user,password){
  loginPending=true;busy('編集室を開いています…');
  try{
   const session=await ctx.api('/api/login','POST',{username:user,password});
-  ctx.libraryDraft=null;ctx.campaignDraft=null;ctx.libraryResult=null;ctx.campaignList=[];ctx.actor=session.actor;ctx.csrf=session.csrf;ctx.state=null;ctx.selection=null;ctx.searchResult=null;ctx.inquiryResult=null;ctx.submissionDraft={};ctx.intakeFilter={};
+  ctx.libraryDraft=null;ctx.campaignDraft=null;ctx.libraryResult=null;ctx.campaignList=[];ctx.chats={};ctx.actor=session.actor;ctx.csrf=session.csrf;ctx.state=null;ctx.selection=null;ctx.searchResult=null;ctx.inquiryResult=null;ctx.submissionDraft={};ctx.intakeFilter={};
   ctx.view=ctx.actor.role==='developer'?'source':'edit';
   // Remove the previous role's controls before awaiting its replacement data.
   render();
@@ -86,7 +87,7 @@ async function login(user,password){
  }catch(error){render();throw error;}
  finally{loginPending=false;busy(false);}
 }
-async function search(query=ctx.searchQuery){return runInquiry(ctx,query);}
+async function search(query=ctx.searchQuery){ctx.chats??={};ctx.chats[ctx.state.id]??={messages:[],draft:''};ctx.chats[ctx.state.id].draft=query;ctx.view='research';render();}
 function readFile(file){if(file.size>60*1024*1024)throw new Error('ファイルは60MB以下にしてください。');return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(new Error('ファイルを読み取れませんでした。'));r.readAsDataURL(file);});}
 async function upload(files,importing=false){captureSubmissionDraft(ctx);if(importing&&hasSubmissionDraft(ctx)&&!confirm('入力中の原稿を破棄して、別のカタログを取り込みますか？'))return;const uploadedIds=[];busy(importing?'IDMLを解析しています。画像と比較用紙面を準備します…':'原稿・素材を取り込んでいます…');try{for(const file of files){const content=await readFile(file);if(importing){ctx.state=await ctx.api('/api/catalogs','POST',{filename:file.name,content});ctx.submissionDraft={};ctx.catalogs=await ctx.api('/api/catalogs');ctx.pageId=ctx.state.document.pages[0].id;ctx.selection=null;ctx.view='edit';ctx.mode='reference';}else{ctx.state=await ctx.api(`/api/catalogs/${ctx.state.id}/attachments`,'POST',{filename:file.name,content,version:ctx.state.version});if(!ctx.state.uploaded_asset_id)throw new Error('添付資料の保存結果を確認できません。再読み込みして確認してください。');uploadedIds.push(ctx.state.uploaded_asset_id);}}if(!importing&&['source','page-source'].includes(ctx.view)){ctx.pageSourceAssetIds=[...new Set([...(ctx.pageSourceAssetIds||[]),...uploadedIds])];ctx.submissionDraft={...ctx.submissionDraft,asset_ids:[...new Set([...(ctx.submissionDraft?.asset_ids||[]),...uploadedIds])]};}render();notify(importing?'カタログを取り込みました。原版を保持しています。':'素材を保存しました。表データは「内容を見る」から確認できます。');}finally{busy(false);}}
 
@@ -109,6 +110,8 @@ function updateFlowPreview(){const el=ctx.element();if(!el||!$('flow-count'))ret
 
 async function act(action,target){
  if(loginPending)return;
+ if(action==='chat-locate')return locateChat(ctx,target);
+ if(action==='chat-reset')return resetChat(ctx);
  if(action.startsWith('library-'))return libraryAction(ctx,action,target);
  if(action==='inquiry-review'){const id=target.dataset.id;await productAction(ctx,'product-open',target);return productAction(ctx,'product-review',{dataset:{id}});}
  if(action.startsWith('product-'))return productAction(ctx,action,target);
@@ -173,8 +176,8 @@ async function act(action,target){
 }
 
 document.addEventListener('click',event=>{const target=event.target.closest('[data-act]');if(target&&!target.disabled){event.preventDefault();Promise.resolve(act(target.dataset.act,target)).catch(error=>notify(error.message,true));}});
-document.addEventListener('submit',event=>{if(event.target.id==='workflow-filters'){event.preventDefault();workflowFilter(ctx);return;}if(event.target.id==='login-form'){event.preventDefault();login($('username').value,$('password').value).catch(e=>notify(e.message,true));}if(event.target.id==='search-form'){event.preventDefault();search($('search-query').value).catch(e=>notify(e.message,true));}});
-document.addEventListener('input',event=>{if(event.target.closest('#submission-form'))captureSubmissionDraft(ctx);if(event.target.id==='edit-text'&&ctx.selection)ctx.drafts[ctx.selection]=event.target.value;if(event.target.id==='flow-count')updateFlowPreview();});
+document.addEventListener('submit',event=>{if(event.target.id==='chat-form'){event.preventDefault();sendChat(ctx).catch(e=>notify(e.message,true));return;}if(event.target.id==='workflow-filters'){event.preventDefault();workflowFilter(ctx);return;}if(event.target.id==='login-form'){event.preventDefault();login($('username').value,$('password').value).catch(e=>notify(e.message,true));}if(event.target.id==='search-form'){event.preventDefault();search($('search-query').value).catch(e=>notify(e.message,true));}});
+document.addEventListener('input',event=>{captureChat(ctx);if(event.target.closest('#submission-form'))captureSubmissionDraft(ctx);if(event.target.id==='edit-text'&&ctx.selection)ctx.drafts[ctx.selection]=event.target.value;if(event.target.id==='flow-count')updateFlowPreview();});
 document.addEventListener('change',event=>{
  if(loginPending)return;
  const target=event.target;
@@ -194,4 +197,4 @@ document.addEventListener('change',event=>{
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='s'&&ctx.view==='edit'&&ctx.actor?.role==='editor'&&!modal.open){event.preventDefault();if($('edit-text'))act('save-text',{}).catch(e=>notify(e.message,true));}});
 window.addEventListener('beforeunload',event=>{if(hasSubmissionDraft(ctx)||Object.entries(ctx.drafts).some(([id,value])=>ctx.state?.document.pages.flatMap(p=>p.elements).find(e=>e.id===id)?.text!==value)){event.preventDefault();event.returnValue='';}});
 
-try{const session=await ctx.api('/api/session');ctx.libraryDraft=null;ctx.campaignDraft=null;ctx.libraryResult=null;ctx.campaignList=[];ctx.actor=session.actor;ctx.csrf=session.csrf;ctx.view=ctx.actor.role==='developer'?'source':'edit';await refreshCatalogs();}catch{ctx.actor=null;render();}
+try{const session=await ctx.api('/api/session');ctx.libraryDraft=null;ctx.campaignDraft=null;ctx.libraryResult=null;ctx.campaignList=[];ctx.chats={};ctx.actor=session.actor;ctx.csrf=session.csrf;ctx.view=ctx.actor.role==='developer'?'source':'edit';await refreshCatalogs();}catch{ctx.actor=null;render();}

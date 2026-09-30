@@ -105,6 +105,7 @@ class Handler(BaseHTTPRequestHandler):
                 if len(parts)==3 and not mutation:return self.send(service.get_catalog(cid,actor))
                 if len(parts)==4:
                     action=parts[3]
+                    if action=='chat' and mutation:return self.send(self.server.chat.answer(cid,actor,self.token(),data))
                     if action=='submission-import-preview' and mutation:
                         return self.send(service.preview_submission_import(cid,actor,data))
                     if action=='operations' and mutation:
@@ -154,6 +155,8 @@ def decode_upload(data):
 def create_server(directory,port=8765):
     server=ThreadingHTTPServer(('127.0.0.1',port),Handler)
     server.service=Service(directory)
+    from catalog_core.chat import ChatEngine
+    server.chat=ChatEngine(server.service)
     server.daemon_threads=True
     return server
 

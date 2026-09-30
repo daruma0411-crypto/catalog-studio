@@ -44,6 +44,10 @@ class HTTPTests(unittest.TestCase):
         status,st=self.call('POST','/api/catalogs',body);self.assertEqual(status,200)
         cid=st['id']
         self.assertEqual(self.call('GET','/api/library')[0],200)
+        self.server.chat.provider=lambda payload:{'output':[{'type':'message','role':'assistant','content':[{'type':'output_text','text':'テスト用回答'}]}]}
+        self.assertEqual(self.call('POST',f'/api/catalogs/{cid}/chat',{'message':'質問'},csrf=False)[0],403)
+        self.assertEqual(self.call('POST',f'/api/catalogs/{cid}/chat',{'message':'質問'})[1]['answer'],'テスト用回答')
+        self.assertTrue(self.call('POST',f'/api/catalogs/{cid}/chat',{'reset':True})[1]['reset'])
         self.assertEqual(self.call('GET','/api/library-search?q=ERD9717WA&catalog='+cid)[0],410)
         self.assertEqual(self.call('GET','/api/campaigns')[0],410)
         self.assertEqual(self.call('POST','/api/campaigns',{})[0],410)
