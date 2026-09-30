@@ -7,7 +7,7 @@ from html import escape
 from .operations import now
 from .rendering import PAGE_CSS,page_html
 
-OP_NAMES={'create_group':'商品ブロックを作成','move_group':'商品ブロックを移動','ungroup':'商品ブロックを解除','edit_text':'文章を上書き','replace_text':'文字列を変更','move':'配置を変更','delete':'削除指定','restore':'削除を取り消し','replace_image':'画像を差し替え','flow_text':'次ページへ文章を送る','add_text':'文章を追加','add_page':'新規ページ','rename_page':'掲載内容を変更','delete_page':'ページを削除','reorder_pages':'台割の順序を変更'}
+OP_NAMES={'product_change_request':'商品変更の指示','create_group':'商品ブロックを作成','move_group':'商品ブロックを移動','ungroup':'商品ブロックを解除','edit_text':'文章を上書き','replace_text':'文字列を変更','move':'配置を変更','delete':'削除指定','restore':'削除を取り消し','replace_image':'画像を差し替え','flow_text':'次ページへ文章を送る','add_text':'文章を追加','add_page':'新規ページ','rename_page':'掲載内容を変更','delete_page':'ページを削除','reorder_pages':'台割の順序を変更'}
 AGREEMENTS={'pending':'未合意','agreed':'合意済み','recheck':'再合意が必要'}
 STATUSES={'received':'受け取り','checking':'確認中','applied':'反映済み'}
 

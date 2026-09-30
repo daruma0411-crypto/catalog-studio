@@ -102,12 +102,28 @@ class Service:
             if row['published'] is None: raise PermissionError('このカタログは社内共有されていません。')
             return {'id':cid,'title':row['title'],'version':row['published_version'],'published_version':row['published_version'],'document':json.loads(row['published']),'readonly':True,'can_undo':False}
         state=json.loads(row['state'])
-        state.update(id=cid,title=row['title'],version=row['version'],published_version=row['published_version'],readonly=actor.role!='editor',can_undo=bool(event and event['actor']==actor.id and event['action'] not in ('undo','publish')))
+        state.update(id=cid,title=row['title'],version=row['version'],published_version=row['published_version'],readonly=actor.role!='editor',can_undo=bool(event and event['actor']==actor.id and event['action'] not in ('undo','publish','product_change_request')))
         return state
 
     def search(self,cid,actor,query):
         state=self.get_catalog(cid,actor)
         return {**find_occurrences(state['document'],query),'catalog_id':cid,'title':state['title'],'revision':state['version']}
+
+    def library(self,actor):
+        from .campaigns import library
+        return library(self,actor)
+
+    def library_search(self,actor,query,catalog_ids):
+        from .campaigns import search
+        return search(self,actor,query,catalog_ids)
+
+    def campaigns(self,actor):
+        from .campaigns import listing
+        return listing(self,actor)
+
+    def create_campaign(self,actor,spec):
+        from .campaigns import create
+        return create(self,actor,spec)
 
     def inquire(self,cid,actor,query):
         from .inquiry import answer
@@ -130,7 +146,7 @@ class Service:
             state=json.loads(row['state']);version=row['version']+1
             if kind=='undo':
                 event=db.execute('SELECT * FROM events WHERE catalog_id=? ORDER BY id DESC LIMIT 1',(cid,)).fetchone()
-                if not event or event['actor']!=actor.id or event['action'] in ('undo','publish'): raise ValueError('直前の自分の編集のみ取り消せます。公開の取り消しはできません。')
+                if not event or event['actor']!=actor.id or event['action'] in ('undo','publish','product_change_request'): raise ValueError('直前の自分の編集のみ取り消せます。公開・複数冊子の指示登録は冊子単位で取り消せません。')
                 state=json.loads(event['before_state'])
             elif kind in ('create_group','move_group','ungroup'):
                 from .groups import apply_group
@@ -169,7 +185,9 @@ class Service:
                 db.execute('UPDATE catalogs SET published=?,published_version=? WHERE id=?',(dump(public_document(state['document'])),version,cid))
             else:
                 apply(state,actor,op)
-            if kind not in ('undo','publish'):
+            from .campaigns import refresh_checks
+            refresh_checks(state)
+            if kind not in ('undo','publish','product_change_request'):
                 reconcile(json.loads(row['state']),state,actor,op.get('reason',''))
             paper_ops={'edit_text','replace_text','move','delete','restore','replace_image','flow_text','add_text','add_page','rename_page','delete_page','reorder_pages','move_group','reset_document'}
             if kind in paper_ops:

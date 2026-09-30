@@ -19,6 +19,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,catalog_id TEXT NOT NULL,version INTEGER NOT NULL,actor TEXT NOT NULL,action TEXT NOT NULL,before_state TEXT NOT NULL,created TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT NOT NULL,role TEXT NOT NULL,salt TEXT NOT NULL,password_hash TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL,expires REAL NOT NULL,csrf TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS change_campaigns(id TEXT PRIMARY KEY,state TEXT NOT NULL,created TEXT NOT NULL);
             ''')
 
     @contextmanager

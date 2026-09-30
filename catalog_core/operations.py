@@ -194,6 +194,13 @@ def apply(state,actor,op):
     elif kind=='change_status':
         change=next((c for c in state['changes'] if c['id']==op.get('change_id')),None)
         if change is None or op.get('status') not in ('open','fixed','verified'): raise ValueError('指示または状態が不正です。')
+        if change.get('campaign_id'):
+            from .campaigns import evidence
+            page,element,stamp=evidence(state['document'],change['element_id'])
+            if not stamp:raise ValueError('対象の文章がありません。復元してから確認してください。')
+            change['checked_evidence']=stamp
+            change.pop('recheck_reason',None)
+            change['page_id']=page['id'];change['page_label']=page.get('label','')
         change['status']=op['status']
         return
     else:
