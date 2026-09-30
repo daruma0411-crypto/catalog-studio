@@ -104,12 +104,12 @@ def released_package(service,cid,actor):
     state=service.get_catalog(cid,actor)
     # This export is always scoped to the reader's published snapshot.
     from .service import Actor
-    state=service.get_catalog(cid,Actor(actor.id,actor.name,'reader'))
+    state=service.get_catalog(cid,Actor(actor.id,actor.name,'reader'),published_only=True)
     out=io.BytesIO()
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
         for i,p in enumerate(state['document']['pages'],1):z.writestr(f'pages/page-{i}.html',page_html(p))
         for aid in state['document']['assets']:
-            path=service.asset_path(cid,Actor(actor.id,actor.name,'reader'),aid)
+            path=service.asset_path(cid,Actor(actor.id,actor.name,'reader'),aid,published_only=True)
             z.write(path,'assets/'+aid)
         z.writestr('catalog.json',json.dumps(state,ensure_ascii=False,indent=2))
     return out.getvalue()

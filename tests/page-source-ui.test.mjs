@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {sourceHTML} from '../static/views.js';
+const ctx={view:'page-source',pageSourceId:'new',pageSourceAssetIds:[],submissionDraft:{page_id:'new'},actor:{role:'developer'},state:{id:'c',document:{pages:[{id:'new',title:'新規ページ',original:false,elements:[]}]},submissions:[{id:'old',title:'既存ページの原稿',text:'以前の内容',status:'received'}],attachments:[{id:'old.pdf',name:'別ページの資料.pdf'}],threads:[]}};
+const html=sourceHTML(ctx);
+assert.doesNotMatch(html,/既存ページの原稿|以前の内容|別ページの資料|原稿・指示の管理表/);
+assert.match(html,/このページの原稿を新しく登録/);
+assert.match(html,/id="submission-page"[^>]*value="new"/);
+assert.match(html,/id="submission-title"[^>]*value=""/);
+assert.match(html,/id="submission-text"[^>]*><\/textarea>/);
+ctx.pageSourceAssetIds=['fresh.pdf'];ctx.state.attachments.push({id:'fresh.pdf',name:'今回の資料.pdf'});ctx.submissionDraft.asset_ids=['fresh.pdf'];
+const uploaded=sourceHTML(ctx);assert.match(uploaded,/今回の資料/);assert.doesNotMatch(uploaded,/別ページの資料/);
+console.log('PASS: page intake starts blank and excludes unrelated manuscripts and assets');

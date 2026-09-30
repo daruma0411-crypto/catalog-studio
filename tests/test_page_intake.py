@@ -52,3 +52,19 @@ class PageIntakeTests(unittest.TestCase):
         item=new['submissions'][0]
         self.assertEqual(item['agreement'],'agreed');self.assertTrue(item['paper_checked'])
         self.assertEqual(item['content_revision'],1)
+
+    def test_upload_receipt_identifies_own_file_during_concurrent_attachment(self):
+        original=self.service.get_catalog;inserted=False
+        def concurrent_get(cid,actor,**kwargs):
+            nonlocal inserted
+            if not inserted:
+                inserted=True
+                current=original(cid,actor)
+                self.service.attach(cid,self.editor,current['version'],'other.txt',b'other')
+            return original(cid,actor,**kwargs)
+        state=original(self.cid,self.dev)
+        self.service.get_catalog=concurrent_get
+        response=self.service.attach(self.cid,self.dev,state['version'],'mine.txt',b'mine')
+        mine=next(a['id'] for a in response['attachments'] if a['name']=='mine.txt')
+        self.assertEqual(response['uploaded_asset_id'],mine)
+        self.assertNotEqual(response['uploaded_asset_id'],response['attachments'][-1]['id'])

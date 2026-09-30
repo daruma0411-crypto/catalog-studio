@@ -25,7 +25,8 @@ class Actor:
 
 
 class Service:
-    def __init__(self,directory):
+    def __init__(self,directory,reader_preview=False):
+        self.reader_preview=reader_preview
         self.directory=Path(directory)
         self.assets_dir=self.directory/'assets'
         self.sources_dir=self.directory/'sources'
@@ -74,7 +75,7 @@ class Service:
     def list_catalogs(self,actor):
         with self.store.connection() as db:
             rows=db.execute('SELECT id,title,version,published_version,created FROM catalogs ORDER BY created DESC').fetchall()
-        return [{**dict(r),'version':r['published_version'] if actor.role=='reader' else r['version']} for r in rows if actor.role!='reader' or r['published_version'] is not None]
+        return [{**dict(r),'version':r['published_version'] if actor.role=='reader' and not self.reader_preview else r['version']} for r in rows if actor.role!='reader' or self.reader_preview or r['published_version'] is not None]
 
     def import_catalog(self,data,filename,actor):
         if actor.role!='editor': raise PermissionError('カタログの取り込みは販促担当が行います。')
@@ -90,11 +91,13 @@ class Service:
             db.execute('INSERT INTO catalogs(id,title,version,state,original,published,published_version,created) VALUES (?,?,?,?,?,?,?,?)',(cid,name,1,dump(state),dump(doc),None,None,now()))
         return self.get_catalog(cid,actor)
 
-    def get_catalog(self,cid,actor):
+    def get_catalog(self,cid,actor,*,published_only=False):
         with self.store.connection() as db:
             row=self._row(db,cid)
             event=db.execute('SELECT actor,action FROM events WHERE catalog_id=? ORDER BY id DESC LIMIT 1',(cid,)).fetchone()
         if actor.role=='reader':
+            if self.reader_preview and not published_only:
+                return {'id':cid,'title':row['title'],'version':row['version'],'published_version':row['published_version'],'document':public_document(json.loads(row['state'])['document']),'readonly':True,'can_undo':False,'preview':True}
             if row['published'] is None: raise PermissionError('このカタログは社内共有されていません。')
             return {'id':cid,'title':row['title'],'version':row['published_version'],'published_version':row['published_version'],'document':json.loads(row['published']),'readonly':True,'can_undo':False}
         state=json.loads(row['state'])
@@ -200,11 +203,13 @@ class Service:
             version=row['version']+1
             db.execute('INSERT INTO events(catalog_id,version,actor,action,before_state,created) VALUES (?,?,?,?,?,?)',(cid,version,actor.id,'attach',row['state'],now()))
             db.execute('UPDATE catalogs SET state=?,version=? WHERE id=?',(dump(state),version,cid))
-        return self.get_catalog(cid,actor)
+        result=self.get_catalog(cid,actor)
+        result['uploaded_asset_id']=attachment['id']
+        return result
 
-    def asset_path(self,cid,actor,asset_id):
+    def asset_path(self,cid,actor,asset_id,*,published_only=False):
         if not isinstance(asset_id,str) or Path(asset_id).name!=asset_id or '/' in asset_id or '\\' in asset_id: raise ValueError('素材IDが不正です。')
-        st=self.get_catalog(cid,actor)
+        st=self.get_catalog(cid,actor,published_only=published_only)
         permitted=set(st['document']['assets'])
         if actor.role!='reader':
             permitted.update(a['id'] for a in st.get('attachments',[]))
