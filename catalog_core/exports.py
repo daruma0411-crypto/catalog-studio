@@ -7,6 +7,10 @@ from html import escape
 from .operations import now
 from .rendering import PAGE_CSS,page_html
 
+OP_NAMES={'create_group':'商品ブロックを作成','move_group':'商品ブロックを移動','ungroup':'商品ブロックを解除','edit_text':'文章を上書き','replace_text':'文字列を変更','move':'配置を変更','delete':'削除指定','restore':'削除を取り消し','replace_image':'画像を差し替え','flow_text':'次ページへ文章を送る','add_text':'文章を追加','add_page':'新規ページ','rename_page':'掲載内容を変更','delete_page':'ページを削除','reorder_pages':'台割の順序を変更'}
+AGREEMENTS={'pending':'未合意','agreed':'合意済み','recheck':'再合意が必要'}
+STATUSES={'received':'受け取り','checking':'確認中','applied':'反映済み'}
+
 
 def csv_bytes(rows):
     stream=io.StringIO(newline='')
@@ -31,19 +35,29 @@ def instruction_package(service,cid,actor):
     if actor.role!='editor': raise PermissionError('制作指示の出力は販促担当が行います。')
     state=service.get_catalog(cid,actor)
     original=service.original_document(cid,actor)
+    pages={p['id']:(i,p) for i,p in enumerate(state['document']['pages'],1)}
     manifest={'catalog_id':cid,'title':state['title'],'revision':state['version'],'created':now(),'source_hash':state['document']['source_hash'],'unresolved_threads':sum(t['status']=='open' for t in state['threads']),'layout_notice':'HTMLは編集用の配置案。InDesignの最終組版とは異なります。','import_warnings':state['document'].get('warnings',[])}
     out=io.BytesIO()
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
         z.writestr('manifest.json',json.dumps(manifest,ensure_ascii=False,indent=2))
         z.writestr('instructions.json',json.dumps({**manifest,'changes':state['changes'],'threads':state['threads'],'submissions':state['submissions']},ensure_ascii=False,indent=2))
+        submission_rows=[['原稿ID','件名','対象','本文','原稿改訂','担当','回答・確認期限','原稿確定予定日','合意','合意した原稿改訂','反映状況','紙面確認','確認した原稿改訂','更新日時','取り込み元','取り込み原稿ID']]
+        for s in state['submissions']:
+            submission_rows.append([s['id'],s['title'],s.get('target',''),s['text'],s.get('content_revision',1),s.get('assignee',''),s.get('due_date',''),s.get('ready_date',''),AGREEMENTS.get(s.get('agreement'),'未合意'),s.get('agreed_content_revision',''),STATUSES.get(s['status'],s['status']),'確認済み' if s.get('paper_checked') else '未確認',s.get('checked_content_revision',''),s.get('updated_at',s.get('created','')),s.get('import_ref',{}).get('namespace',''),s.get('import_ref',{}).get('key','')])
+        z.writestr('submissions.csv',csv_bytes(submission_rows))
         rows=[['番号','操作','ページ','要素','変更前','変更後','理由','状態','日時']]
         for i,c in enumerate(state['changes'],1):
             def summary(v):
                 if isinstance(v,dict): return v.get('text') or json.dumps(v,ensure_ascii=False)
                 return str(v or '')
-            rows.append([i,c['type'],c.get('page_label',''),c.get('element_id',''),summary(c.get('before')),summary(c.get('after')),c.get('reason',''),c['status'],c['created']])
+            label=c.get('page_label') or pages.get(c.get('page_id'),(None,{}))[1].get('label','')
+            rows.append([i,OP_NAMES.get(c['type'],c['type']),label,c.get('element_id',''),summary(c.get('before')),summary(c.get('after')),c.get('reason',''),{'open':'未対応','fixed':'修正済み','verified':'確認済み'}.get(c['status'],c['status']),c['created']])
         z.writestr('instructions.csv',csv_bytes(rows))
         body=f'<h1>制作への指示原稿</h1><p>{escape(state["title"])} · 版 {state["version"]}</p><p>未解決の確認事項：{manifest["unresolved_threads"]}件。保留事項と確定指示を分けて確認してください。</p>'
+        body+='<h2>原稿管理表</h2><p><a href="submissions.csv">原稿・担当・期限・確認状態の一覧を保存</a></p>'
+        for s in state['submissions']:
+            body+=f'<section><h3>{escape(s["title"])} · 原稿改訂 {s.get("content_revision",1)}</h3><p>担当：{escape(s.get("assignee") or "未設定")} ／ 回答・確認期限：{escape(s.get("due_date") or "未設定")} ／ 原稿確定予定日：{escape(s.get("ready_date") or "未設定")}</p><p>{AGREEMENTS.get(s.get("agreement"),"未合意")} ／ {STATUSES.get(s["status"],escape(s["status"]))} ／ 紙面：{"確認済み" if s.get("paper_checked") else "未確認"}</p><pre>{escape(s["text"])}</pre>'
+            body+='<ul>'+''.join(f'<li><a href="assets/{escape(aid,quote=True)}">{escape(next((a["name"] for a in state["attachments"] if a["id"]==aid),aid))}</a></li>' for aid in s.get('asset_ids',[]))+'</ul></section>'
         body+='<h2>紙面</h2><ul>'
         for i,p in enumerate(state['document']['pages'],1):
             z.writestr(f'pages/edited-{i}.html',page_html(p,reference=True))
@@ -56,7 +70,12 @@ def instruction_package(service,cid,actor):
             body+='<tr>'+''.join(f'<td>{escape(str(row[i]))}</td>' for i in [0,1,4,5,6])+'</tr>'
         body+='</tbody></table><h2>コメント・確認事項</h2>'
         for t in state['threads']:
-            body+=f'<h3>{escape(t["destination"])} · {escape(t["status"])} · {escape(t.get("element_id") or "全体")}</h3>'
+            place=pages.get(t.get('page_id'))
+            target='全体'
+            if place:target=f'<a href="pages/edited-{place[0]}.html">p.{escape(place[1]["label"])} · {escape(place[1]["title"])}</a>'
+            if t.get('group_name'):target+=' ／ '+escape(t['group_name'])
+            if t.get('submission_id'):target='原稿：'+escape(next((s['title'] for s in state['submissions'] if s['id']==t['submission_id']),'対象原稿'))
+            body+=f'<h3>{ {"production":"制作会社へ","developer":"開発部門へ","editor":"販促担当へ"}.get(t["destination"],escape(t["destination"]))} · {"未解決" if t["status"]=="open" else "解決済み"} · {target}</h3>'
             for m in t['messages']:body+=f'<p><strong>{escape(m["author"])}</strong>：{escape(m["text"])}</p>'
         body+='<h2>添付原稿・素材</h2><ul>'
         assets={**original['assets'],**state['document']['assets']}

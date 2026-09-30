@@ -11,6 +11,7 @@ from .importer import parse_idml,read_package
 from .operations import apply,now,uid,public_document
 from .search import find_occurrences
 from .store import Store,dump
+from .submissions import reconcile,may_edit,find_submission
 
 
 class ConflictError(Exception): pass
@@ -106,7 +107,7 @@ class Service:
 
     def apply_operation(self,cid,actor,expected_version,op):
         kind=op.get('type')
-        developer_ops={'add_submission','submission_assets','comment','reply'}
+        developer_ops={'add_submission','submission_update','submission_assets','comment','reply','import_submissions'}
         if actor.role!='editor' and not (actor.role=='developer' and kind in developer_ops): raise PermissionError('この操作を行う権限がありません。')
         if isinstance(expected_version,bool) or not isinstance(expected_version,int): raise ValueError('版番号が不正です。')
         with self.store.connection(write=True) as db:
@@ -138,12 +139,17 @@ class Service:
                     if submission['status']=='applied':submission['status']='checking'
                 state['document']=original
                 state['changes']=[]
+            elif kind=='import_submissions':
+                from .submission_import import apply_import
+                apply_import(state,actor,op,self._submission_sheet(state,op))
             elif kind=='publish':
                 pending=sum(t['status']=='open' for t in state['threads'])
                 if pending: raise ValueError(f'未解決の確認事項が{pending}件あります。解決してから社内共有してください。')
                 db.execute('UPDATE catalogs SET published=?,published_version=? WHERE id=?',(dump(public_document(state['document'])),version,cid))
             else:
                 apply(state,actor,op)
+            if kind not in ('undo','publish'):
+                reconcile(json.loads(row['state']),state,actor,op.get('reason',''))
             paper_ops={'edit_text','replace_text','move','delete','restore','replace_image','flow_text','add_text','add_page','rename_page','delete_page','reorder_pages','move_group','reset_document'}
             if kind in paper_ops:
                 page_ids={p['id'] for p in state['document']['pages']}
@@ -157,6 +163,19 @@ class Service:
             db.execute('UPDATE catalogs SET state=?,version=? WHERE id=?',(dump(state),version,cid))
         return self.get_catalog(cid,actor)
 
+    def _submission_sheet(self,state,spec):
+        from .assets import spreadsheet_preview
+        aid=spec.get('asset_id')
+        asset=next((a for a in state['attachments'] if a['id']==aid and a.get('kind')=='spreadsheet'),None)
+        if asset is None:raise ValueError('取り込むExcel・CSVを先にアップロードしてください。')
+        return spreadsheet_preview((self.assets_dir/asset['id']).read_bytes(),asset['name'])
+
+    def preview_submission_import(self,cid,actor,spec):
+        if actor.role not in ('editor','developer'):raise PermissionError('原稿取り込みの権限がありません。')
+        from .submission_import import build_preview
+        state=self.get_catalog(cid,actor)
+        return {**build_preview(state,actor,spec,self._submission_sheet(state,spec)),'version':state['version']}
+
     def attach(self,cid,actor,expected_version,filename,data,submission_id=None):
         if actor.role not in ('editor','developer'): raise PermissionError('素材を追加する権限がありません。')
         from .assets import ingest_attachment
@@ -166,10 +185,13 @@ class Service:
             if row['version']!=expected_version: raise ConflictError('別の変更が保存されています。画面を更新してください。')
             state=json.loads(row['state'])
             if submission_id and not any(s['id']==submission_id for s in state['submissions']): raise ValueError('原稿が見つかりません。')
+            if submission_id and not may_edit(find_submission(state,submission_id),actor):raise PermissionError('自分が登録した原稿に資料を追加してください。')
             attachment.update(author=actor.name,created=now(),submission_id=submission_id)
             state['attachments'].append(attachment);state['document']['assets'].update(assets)
             if submission_id:
-                next(s for s in state['submissions'] if s['id']==submission_id)['asset_ids'].append(attachment['id'])
+                item=find_submission(state,submission_id)
+                item['asset_ids']=list(dict.fromkeys(item.get('asset_ids',[])+[attachment['id']]))
+            reconcile(json.loads(row['state']),state,actor,'資料の追加')
             version=row['version']+1
             db.execute('INSERT INTO events(catalog_id,version,actor,action,before_state,created) VALUES (?,?,?,?,?,?)',(cid,version,actor.id,'attach',row['state'],now()))
             db.execute('UPDATE catalogs SET state=?,version=? WHERE id=?',(dump(state),version,cid))

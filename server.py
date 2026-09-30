@@ -102,6 +102,8 @@ class Handler(BaseHTTPRequestHandler):
                 if len(parts)==3 and not mutation:return self.send(service.get_catalog(cid,actor))
                 if len(parts)==4:
                     action=parts[3]
+                    if action=='submission-import-preview' and mutation:
+                        return self.send(service.preview_submission_import(cid,actor,data))
                     if action=='operations' and mutation:
                         if not isinstance(data.get('operation'),dict):raise ValueError('操作を指定してください。')
                         return self.send(service.apply_operation(cid,actor,data.get('version'),data['operation']))

@@ -127,22 +127,31 @@ def apply(state,actor,op):
             item['source_ref']={'asset_id':source['asset_id'],'sheet':text(source.get('sheet',''),200),'row':source['row']}
         state['submissions'].append(item)
         return
+    elif kind=='submission_update':
+        from .submissions import update_submission
+        update_submission(state,actor,op)
+        return
     elif kind=='submission_review':
         item=next((s for s in state['submissions'] if s['id']==op.get('submission_id')),None)
         if item is None:raise ValueError('原稿が見つかりません。')
         agreement=op.get('agreement',item.get('agreement','pending'))
-        if agreement not in ('pending','agreed'):raise ValueError('合意状態が不正です。')
+        if agreement not in ('pending','agreed','recheck'):raise ValueError('合意状態が不正です。')
+        if agreement=='agreed' and any(t.get('submission_id')==item['id'] and t['status']=='open' for t in state['threads']):raise ValueError('未解決の質問を確認し、解決にしてから合意を記録してください。')
         checked=op.get('paper_checked',item.get('paper_checked',False))
         if not isinstance(checked,bool):raise ValueError('確認状態が不正です。')
         pid=op.get('page_id',item.get('review_page_id')) or None
         if pid:find_page(doc,pid)
         if checked and not pid:raise ValueError('確認した紙面のページを選んでください。')
         item.update(agreement=agreement,paper_checked=checked,review_page_id=pid,reviewed_by=actor.name,reviewed_at=now())
+        if 'agreement' in op and agreement=='agreed':item.update(agreed_content_revision=item.get('content_revision',1),agreed_at=now(),agreed_by=actor.name)
+        if checked:item.update(checked_content_revision=item.get('content_revision',1),checked_at=now(),checked_by=actor.name)
         return
     elif kind=='submission_assets':
         item=next((s for s in state['submissions'] if s['id']==op.get('submission_id')),None)
         ids=op.get('asset_ids')
         if item is None or not isinstance(ids,list) or any(not any(a['id']==aid for a in state['attachments']) for aid in ids):raise ValueError('原稿または資料が不正です。')
+        from .submissions import may_edit
+        if not may_edit(item,actor):raise PermissionError('自分が登録した原稿の資料を選択してください。')
         item['asset_ids']=list(dict.fromkeys(ids))
         return
     elif kind=='submission_status':

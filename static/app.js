@@ -3,13 +3,14 @@ import {renderPaper,assetURL,estimateSplit,overflowCount} from './paper.js';
 import {workspaceHTML,inspectorHTML} from './workspace.js';
 import {sourceHTML,planHTML,researchHTML,handoffHTML} from './views.js';
 import {groupInspector,groupToolbar,groupAction} from './groups.js';
+import {workflowAction,workflowChange,workflowFilter} from './submissions.js';
 
 const root=document.getElementById('app'),modal=document.getElementById('modal');
 const $=id=>document.getElementById(id);
 const demo={editor:['promo','promo-demo'],developer:['development','development-demo'],reader:['reader','reader-demo']};
 let resizeObserver,toastTimer,loginPending=false;
 const ctx={actor:null,csrf:'',state:null,catalogs:[],pageId:null,selection:null,view:'edit',railTab:'inbox',mode:'reference',zoom:'fit',scale:1,searchQuery:'ERD9717WA',searchResult:null,drafts:{},dragMoved:false,
- notify,render,
+ notify,render,showModal,closeModal,busy,
  currentPage(){return this.state?.document.pages.find(p=>p.id===this.pageId)||this.state?.document.pages[0]},
  element(){return this.currentPage()?.elements.find(e=>e.id===this.selection)},
  renderInspector(){const el=$('inspector');if(el)el.innerHTML=this.groupMode?groupInspector(this):inspectorHTML(this)},
@@ -29,8 +30,10 @@ const ctx={actor:null,csrf:'',state:null,catalogs:[],pageId:null,selection:null,
  },
 };
 
-function notify(message,error=false){const el=$('toast');clearTimeout(toastTimer);el.hidden=false;el.classList.toggle('error',error);el.textContent=message;toastTimer=setTimeout(()=>el.hidden=true,error?10000:4300);}
-function busy(message){document.querySelector('.busy-cover')?.remove();if(message){const cover=document.createElement('div');cover.className='busy-cover';cover.innerHTML=`<div role="status">${esc(message)}</div>`;document.body.append(cover);}}
+function notify(message,error=false){const el=$('toast');(modal.open?modal:document.body).append(el);clearTimeout(toastTimer);el.hidden=false;el.classList.toggle('error',error);el.textContent=message;toastTimer=setTimeout(()=>el.hidden=true,error?10000:4300);}
+let busyControls=[];
+modal.addEventListener('cancel',event=>{if(document.querySelector('.busy-cover'))event.preventDefault();});
+function busy(message){document.querySelector('.busy-cover')?.remove();for(const [el,disabled] of busyControls)el.disabled=disabled;busyControls=[];if(message){busyControls=[...document.querySelectorAll('button,input,select,textarea')].map(el=>[el,el.disabled]);for(const [el] of busyControls)el.disabled=true;const cover=document.createElement('div');cover.className='busy-cover';cover.innerHTML=`<div role="status">${esc(message)}</div>`;(modal.open?modal:document.body).append(cover);}}
 function showModal(html){$('modal-content').innerHTML=html;if(!modal.open)modal.showModal();}
 function closeModal(){modal.close();}
 
@@ -99,6 +102,7 @@ function updateFlowPreview(){const el=ctx.element();if(!el||!$('flow-count'))ret
 
 async function act(action,target){
  if(loginPending)return;
+ if(action.startsWith('workflow-'))return workflowAction(ctx,action,target);
  if(action.startsWith('group-'))return groupAction(ctx,action,target);
  const el=ctx.element();
  switch(action){
@@ -158,13 +162,14 @@ async function act(action,target){
 }
 
 document.addEventListener('click',event=>{const target=event.target.closest('[data-act]');if(target&&!target.disabled){event.preventDefault();Promise.resolve(act(target.dataset.act,target)).catch(error=>notify(error.message,true));}});
-document.addEventListener('submit',event=>{if(event.target.id==='login-form'){event.preventDefault();login($('username').value,$('password').value).catch(e=>notify(e.message,true));}if(event.target.id==='search-form'){event.preventDefault();search($('search-query').value).catch(e=>notify(e.message,true));}});
+document.addEventListener('submit',event=>{if(event.target.id==='workflow-filters'){event.preventDefault();workflowFilter(ctx);return;}if(event.target.id==='login-form'){event.preventDefault();login($('username').value,$('password').value).catch(e=>notify(e.message,true));}if(event.target.id==='search-form'){event.preventDefault();search($('search-query').value).catch(e=>notify(e.message,true));}});
 document.addEventListener('input',event=>{if(event.target.id==='edit-text'&&ctx.selection)ctx.drafts[ctx.selection]=event.target.value;if(event.target.id==='flow-count')updateFlowPreview();});
 document.addEventListener('change',event=>{
  if(loginPending)return;
  const target=event.target;
  (async()=>{
   if(target.id==='catalog-select')return loadCatalog(target.value);
+  if(workflowChange(ctx,target))return;
   if(target.dataset.review){const field=target.dataset.review;const op={type:'submission_review',submission_id:target.dataset.submission,[field]:field==='paper_checked'?target.value==='true':target.value};if(field==='page_id')op.paper_checked=false;return ctx.op(op,'確認状況を保存しました。');}
   if(target.id==='account-select')return login(...demo[target.value]);
   if(target.id==='catalog-upload')return upload([...target.files],true);
@@ -172,7 +177,7 @@ document.addEventListener('change',event=>{
   if(target.id==='render-mode'){ctx.mode=target.value;renderPaper(ctx);return;}
   if(target.dataset.submissionStatus)return ctx.op({type:'submission_status',submission_id:target.dataset.submissionStatus,status:target.value});
   if(target.dataset.changeStatus)return ctx.op({type:'change_status',change_id:target.dataset.changeStatus,status:target.value});
- })().catch(e=>notify(e.message,true));
+ })().catch(e=>{if(target.dataset.review||target.dataset.submissionStatus||target.dataset.changeStatus)render();notify(e.message,true);});
 });
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='s'&&ctx.view==='edit'&&ctx.actor?.role==='editor'&&!modal.open){event.preventDefault();if($('edit-text'))act('save-text',{}).catch(e=>notify(e.message,true));}});
 window.addEventListener('beforeunload',event=>{if(Object.entries(ctx.drafts).some(([id,value])=>ctx.state?.document.pages.flatMap(p=>p.elements).find(e=>e.id===id)?.text!==value)){event.preventDefault();event.returnValue='';}});

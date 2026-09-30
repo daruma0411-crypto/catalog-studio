@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {submissionFlags,filteredSubmissions} from '../static/dashboard.js';
+const base={id:'a',title:'改訂原稿',target:'TEST-1',assignee:'山田',due_date:'2026-09-29',agreement:'pending'};
+assert.equal(submissionFlags(base,[],'2026-09-30').overdue,true);
+assert.equal(submissionFlags({...base,due_date:'2026-09-30'},[],'2026-09-30').overdue,false);
+assert.equal(submissionFlags({...base,due_date:''},[],'2026-09-30').overdue,false);
+assert.equal(submissionFlags({...base,agreement:'agreed'},[],'2026-09-30').overdue,false);
+const threads=[{submission_id:'a',status:'open',destination:'developer',messages:[{role:'editor'}]}];
+assert.equal(submissionFlags(base,threads,'2026-09-30').unanswered,1);
+threads[0].messages.push({role:'developer'});
+assert.equal(submissionFlags(base,threads,'2026-09-30').unanswered,0);
+assert.equal(submissionFlags(base,threads,'2026-09-30').open,1);
+const ctx={state:{submissions:[base,{id:'b',title:'別原稿',assignee:'鈴木'}],threads:[]},intakeFilter:{query:'test-1',owner:'山田',status:'all'}};
+assert.equal(filteredSubmissions(ctx).length,1);
+ctx.intakeFilter={query:'',owner:'不在',status:'all'};assert.equal(filteredSubmissions(ctx).length,0);
+console.log('PASS: deadline boundaries, unanswered vs unresolved, combined filters');

@@ -18,11 +18,12 @@ def spreadsheet_preview(data,filename):
         except UnicodeDecodeError:
             try: decoded=data.decode('cp932')
             except UnicodeDecodeError as e: raise ValueError('CSVの文字コードはUTF-8またはShift-JISにしてください。') from e
-        rows=[]
+        rows=[];wide=False;long_cells=False
         for i,row in enumerate(csv.reader(io.StringIO(decoded),delimiter='\t' if suffix=='.tsv' else ',')):
             if i==201: break
+            wide=wide or len(row)>40;long_cells=long_cells or any(len(str(v))>2000 for v in row)
             rows.append([str(v)[:2000] for v in row[:40]])
-        sheets=[{'name':Path(filename).name,'rows':rows[:200],'truncated':len(rows)>200}]
+        sheets=[{'name':Path(filename).name,'rows':rows[:200],'truncated':len(rows)>200 or wide,'content_truncated':long_cells}]
     elif suffix=='.xlsx':
         with checked_zip(data) as z:
             for n in z.namelist():
@@ -31,10 +32,13 @@ def spreadsheet_preview(data,filename):
         try:
             wb=load_workbook(io.BytesIO(data),read_only=True,data_only=False,keep_links=False)
             for ws in wb.worksheets[:10]:
-                rows=[]
+                ws.reset_dimensions()
+                ws.calculate_dimension(force=True)
+                rows=[];long_cells=False
                 for row in ws.iter_rows(min_row=1,max_row=min(ws.max_row or 200,200),max_col=min(ws.max_column or 40,40),values_only=True):
+                    long_cells=long_cells or any(v is not None and len(str(v))>2000 for v in row)
                     rows.append(['' if v is None else str(v)[:2000] for v in row])
-                sheets.append({'name':ws.title,'rows':rows,'truncated':(ws.max_row or 0)>200 or (ws.max_column or 0)>40})
+                sheets.append({'name':ws.title,'rows':rows,'truncated':(ws.max_row or 0)>200 or (ws.max_column or 0)>40,'content_truncated':long_cells})
             wb.close()
         except (ValueError,KeyError,OSError) as e:
             raise ValueError('Excelファイルを読み取れません。xlsx形式で保存し直してください。') from e
