@@ -135,6 +135,14 @@ class Service:
         state=self.get_catalog(cid,actor)
         return {**report(state),'catalog_id':cid,'title':state['title'],'revision':state['version']}
 
+    def product_images(self,cid,actor,occurrence_id):
+        if actor.role not in ('editor','developer'):raise PermissionError('商品素材は販促・開発部門で確認してください。')
+        from .product_images import image_resources
+        state=self.get_catalog(cid,actor)
+        def available(aid):
+            return isinstance(aid,str) and Path(aid).name==aid and '/' not in aid and '\\' not in aid and (self.assets_dir/aid).is_file()
+        return {**image_resources(state,occurrence_id,available),'catalog_id':cid,'revision':state['version']}
+
     def apply_operation(self,cid,actor,expected_version,op):
         kind=op.get('type')
         developer_ops={'add_submission','submission_update','submission_assets','comment','reply','import_submissions'}

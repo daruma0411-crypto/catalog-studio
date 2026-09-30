@@ -13,7 +13,7 @@ export function productsHTML(ctx){
  return `<div class="content-view"><div class="content-head"><div><h1>商品候補・型番と価格の一覧</h1><p>型番を入口に、価格・画像・説明の対応を紙面で確認します。</p></div>${btn('一覧を更新','product-open')}${btn('キーワード検索へ','nav','', 'data-view="research"')}</div><div class="scope">${esc(r.scope)}<br>価格候補は円表記のみ。同じページから価格は最大12件、画像6件、説明8件を提示します。候補にない情報は紙面で確認し、メモに残してください。</div><div class="stat-strip"><span><strong>${r.model_count}</strong>型番候補（対象外を除く）</span><span><strong>${r.occurrence_count}</strong>掲載箇所</span>${Object.entries(statuses).map(([k,v])=>`<span><strong>${r.counts[k]}</strong>${v}</span>`).join('')}</div>${r.orphan_review_count?`<p class="notice">削除・型番変更などで対応する掲載箇所がなくなった確認記録：${r.orphan_review_count}件。履歴は保持しています。</p>`:''}<div class="row" style="margin:20px 0"><input id="product-query" aria-label="型番候補の絞り込み" placeholder="型番で絞り込む" value="${esc(ctx.productQuery||'')}"><select id="product-status" aria-label="商品候補の確認状態"><option value="">すべての状態</option>${options(statuses,ctx.productStatus||'')}</select>${btn('絞り込む','product-filter')}<a class="button" href="/api/catalogs/${esc(ctx.state.id)}/products.csv">全候補をCSV保存</a></div><p class="muted">版 ${r.revision} の一覧。型番候補数は、同じ表記をまとめた数です。商品マスターの確定件数ではありません。</p><div class="product-table-wrap"><table class="product-table"><thead><tr><th>型番候補／掲載場所</th><th>確認状態</th><th>価格・関連情報</th><th>操作</th></tr></thead><tbody>${r.occurrences.filter(o=>(!ctx.productQuery||o.model.toUpperCase().includes(ctx.productQuery.toUpperCase()))&&(!ctx.productStatus||o.status===ctx.productStatus)).map(o=>{
  const review=o.review||{},confirmed=o.status==='confirmed',selected=confirmed?review.prices||[]:[];
  const prices=selected.map(p=>{const c=o.price_candidates.find(c=>c.id===p.id);return c?`${kinds[p.kind]} ¥${Number(c.amount).toLocaleString('ja-JP')}`:''}).filter(Boolean);
- return `<tr><td><strong>${esc(o.model)}</strong><small>p.${esc(o.page_label)} ／ 掲載順 ${o.order}</small><small>文字枠：${esc(o.element_id)}</small></td><td>${badge(statuses[o.status],o.status==='recheck'?'warning':'neutral')}<small>${confirmed?esc(priceStates[review.price_state]):'価格の対応は未確定'}</small>${o.status==='recheck'?'<small>元データが変わりました</small>':''}</td><td>${prices.length?prices.map(esc).join('<br>'):`<span class="muted">${o.price_candidates.length}件の価格候補（未確定）</span>`}<small>${confirmed?`関連を確認した画像 ${(review.image_ids||[]).length}件・説明 ${(review.description_ids||[]).length}件`:`画像候補 ${o.image_candidates.length}件・説明候補 ${o.description_candidates.length}件`}</small></td><td>${btn('紙面で確認','product-locate','',`data-id="${o.id}"`)}${btn(ctx.actor.role==='editor'?'対応を確認・保存':'候補と確認内容を見る','product-review','',`data-id="${o.id}"`)}</td></tr>`;
+ return `<tr><td><strong>${esc(o.model)}</strong><small>p.${esc(o.page_label)} ／ 掲載順 ${o.order}</small><small>文字枠：${esc(o.element_id)}</small></td><td>${badge(statuses[o.status],o.status==='recheck'?'warning':'neutral')}<small>${confirmed?esc(priceStates[review.price_state]):'価格の対応は未確定'}</small>${o.status==='recheck'?'<small>元データが変わりました</small>':''}</td><td>${prices.length?prices.map(esc).join('<br>'):`<span class="muted">${o.price_candidates.length}件の価格候補（未確定）</span>`}<small>${confirmed?`関連を確認した画像 ${(review.image_ids||[]).length}件・説明 ${(review.description_ids||[]).length}件`:`画像候補 ${o.image_candidates.length}件・説明候補 ${o.description_candidates.length}件`}</small></td><td>${btn('画像・素材','product-images','',`data-id="${o.id}"`)}${btn('紙面で確認','product-locate','',`data-id="${o.id}"`)}${btn(ctx.actor.role==='editor'?'対応を確認・保存':'候補と確認内容を見る','product-review','',`data-id="${o.id}"`)}</td></tr>`;
  }).join('')||'<tr><td colspan="4">該当する候補はありません。</td></tr>'}</tbody></table></div></div>`;
 }
 
@@ -34,6 +34,11 @@ export async function productAction(ctx,action,target){
   if(!o)throw new Error('一覧を更新してください。');
   ctx.pageId=o.page_id;ctx.selection=o.element_id;ctx.groupMode=false;ctx.groupId=null;ctx.view='edit';ctx.mode='reference';ctx.render();return;
  }
+ if(action==='product-images'){
+  if(!o)throw new Error('一覧を更新してください。');
+  ctx.busy('画像と元ファイルを確認しています…');
+  try{const r=await ctx.api('/api/catalogs/'+ctx.state.id+'/product-images?occurrence='+encodeURIComponent(o.id));if(r.revision!==ctx.productReport.revision)throw new Error('紙面が更新されています。商品一覧を更新してください。');ctx.showModal(imageResourcesHTML(ctx,r));}finally{ctx.busy(false);}return;
+ }
  if(action==='product-review'){
   if(!o)throw new Error('一覧を更新してください。');
   ctx.productReviewTarget={catalog_id:ctx.state.id,revision:ctx.productReport.revision,occurrence:o};ctx.showModal(reviewHTML(ctx,o));return;
@@ -47,4 +52,10 @@ export async function productAction(ctx,action,target){
   ctx.busy('確認内容を保存しています…');
   try{ctx.state=await ctx.api('/api/catalogs/'+t.catalog_id+'/operations','POST',{version:t.revision,operation:op});ctx.productReport=await ctx.api('/api/catalogs/'+t.catalog_id+'/products');ctx.closeModal();ctx.view='products';ctx.render();ctx.notify('商品候補の確認内容を保存しました。');}finally{ctx.busy(false);}
  }
+}
+
+export function imageResourcesHTML(ctx,r){
+ const url=id=>'/api/catalogs/'+encodeURIComponent(r.catalog_id)+'/assets/'+encodeURIComponent(id);
+ const download=(id,label)=>`<a class="button" href="${esc(url(id))}?download=1">${esc(label)}</a>`;
+ return `<h2>${esc(r.model)} の画像・素材</h2><p>p.${esc(r.page_label)} ／ 版 ${r.revision}</p><p class="scope">${esc(r.scope)}</p>${r.images.map(i=>`<section class="panel"><h3>${esc(i.name)}</h3>${badge(i.product_confirmed?'型番との対応を確認済み':'型番との対応は未確認',i.product_confirmed?'':'neutral')}<p>${esc(relations[i.relation])}</p>${i.preview.available?`<img src="${esc(url(i.preview.id))}" alt="${esc(i.name)}" style="max-width:100%;max-height:240px;object-fit:contain"><p>${download(i.preview.id,'表示用PNGを保存')}</p>`:'<p class="notice">表示用画像は未収録、またはファイルがありません。</p>'}<h4>元ファイル</h4>${i.originals.map(a=>`<p><strong>${esc(a.name)}</strong><br>${a.association==='explicit'?'アップロードした元ファイル':'同名の原本候補（内容を確認してください）'}<br>${a.available?download(a.id,a.association==='explicit'?'元ファイルを保存':'原本候補を保存'):'ファイルがありません'}</p>`).join('')||'<p>対応する元ファイルは未収録、または特定できていません。</p>'}<p class="muted">この冊子内の使用箇所：${i.uses.map(u=>'p.'+esc(u.page_label)+'（'+esc(u.element_id)+'）').join('、')}</p></section>`).join('')||empty('この掲載箇所に画像候補はありません。')}${btn('閉じる','close-modal','full')}`;
 }

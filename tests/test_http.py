@@ -49,6 +49,18 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.call('POST','/api/campaigns',{})[0],410)
         status,products=self.call('GET',f'/api/catalogs/{cid}/products')
         self.assertEqual(status,200);self.assertEqual(products['model_count'],1)
+        oid=products['occurrences'][0]['id']
+        self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/product-images?occurrence='+oid)[0],200)
+        import io
+        from PIL import Image
+        png=io.BytesIO();Image.new('RGB',(2,2),'red').save(png,format='PNG')
+        status,attached=self.call('POST',f'/api/catalogs/{cid}/attachments',{'version':st['version'],'filename':'sample.png','content':base64.b64encode(png.getvalue()).decode()})
+        self.assertEqual(status,200)
+        aid=attached['attachments'][-1]['preview_asset']
+        conn=http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=10)
+        conn.request('GET',f'/api/catalogs/{cid}/assets/{aid}?download=1',headers={'Cookie':self.cookie})
+        response=conn.getresponse();self.assertEqual(response.status,200)
+        self.assertIn('attachment;',response.getheader('Content-Disposition'));self.assertTrue(response.read().startswith(b'\x89PNG'));conn.close()
         from urllib.parse import quote
         inquiry=f'/api/catalogs/{cid}/inquiry?q='+quote('全ての型番と価格を一覧にして')
         status,answer=self.call('GET',inquiry)
@@ -57,6 +69,7 @@ class HTTPTests(unittest.TestCase):
         for path in ['/api/library']:
             self.assertEqual(self.call('GET',path)[0],403)
         self.assertEqual(self.call('POST','/api/campaigns',{})[0],410)
+        self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/product-images?occurrence='+oid)[0],403)
         self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/products')[0],403)
         self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/products.csv')[0],403)
         self.server.service.reader_preview=True

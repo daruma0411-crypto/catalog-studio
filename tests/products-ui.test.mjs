@@ -10,3 +10,8 @@ ctx.state.version=3;assert.doesNotMatch(productsHTML(ctx),/RX-359NB/);ctx.state.
 ctx.actor.role='developer';assert.match(reviewHTML(ctx,occurrence),/fieldset disabled/);assert.doesNotMatch(reviewHTML(ctx,occurrence),/確認内容を保存/);
 ctx.actor.role='reader';await assert.rejects(()=>productAction(ctx,'product-open',{}),/販促・開発/);
 console.log('PASS: stale prices excluded, stale selection reset, escaped evidence, role permissions');
+
+const {imageResourcesHTML}=await import('../static/products.js');
+const resources={catalog_id:'c',model:'RX-359NB',page_label:'1',revision:2,scope:'scope',images:[{name:'<x>',product_confirmed:false,relation:'nearby',preview:{id:'p.png',available:true},originals:[{id:'a.tif',name:'original.tif',association:'name_candidate',available:true},{id:'missing.tif',name:'missing',association:'explicit',available:false}],uses:[{page_label:'1',element_id:'i'}]}]};
+const imageHTML=imageResourcesHTML(ctx,resources);assert.match(imageHTML,/同名の原本候補/);assert.match(imageHTML,/型番との対応は未確認/);assert.match(imageHTML,/&lt;x&gt;/);assert.match(imageHTML,/p.png\?download=1/);assert.doesNotMatch(imageHTML,/missing.tif\?download/);
+console.log('PASS: image provenance, downloadable preview, missing original and escaped names');

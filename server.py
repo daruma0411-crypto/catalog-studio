@@ -117,6 +117,7 @@ class Handler(BaseHTTPRequestHandler):
                         if action=='inquiry':return self.send(result)
                         from catalog_core.inquiry import inquiry_csv
                         return self.send(inquiry_csv(result),content_type='text/csv; charset=utf-8',filename='catalog-answer.csv')
+                    if action=='product-images' and not mutation:return self.send(service.product_images(cid,actor,query.get('occurrence',[''])[0]))
                     if action=='products' and not mutation:return self.send(service.products(cid,actor))
                     if action=='products.csv' and not mutation:
                         from catalog_core.products import product_csv
@@ -131,7 +132,7 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(released_package(service,cid,actor),content_type='application/zip',filename='catalog-released.zip')
                 if len(parts)==5 and parts[3]=='assets' and not mutation:
                     file=service.asset_path(cid,actor,parts[4]);typ=mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
-                    inline=typ in ('image/png','image/jpeg','image/webp')
+                    inline=typ in ('image/png','image/jpeg','image/webp') and query.get('download',[''])[0]!='1'
                     return self.send(file.read_bytes(),content_type=typ,filename=None if inline else file.name)
             return self.send({'error':'Not found'},404)
         except PermissionError as e:self.send({'error':str(e)},403)
