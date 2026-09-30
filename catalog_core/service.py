@@ -109,6 +109,11 @@ class Service:
         state=self.get_catalog(cid,actor)
         return {**find_occurrences(state['document'],query),'catalog_id':cid,'title':state['title'],'revision':state['version']}
 
+    def inquire(self,cid,actor,query):
+        from .inquiry import answer
+        state=self.get_catalog(cid,actor)
+        return {**answer(state,query,allow_products=actor.role in ('editor','developer')),'catalog_id':cid,'revision':state['version']}
+
     def products(self,cid,actor):
         if actor.role not in ('editor','developer'):raise PermissionError('商品候補は販促・開発部門で確認してください。')
         state=self.get_catalog(cid,actor)

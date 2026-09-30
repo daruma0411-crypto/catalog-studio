@@ -45,9 +45,16 @@ class HTTPTests(unittest.TestCase):
         cid=st['id']
         status,products=self.call('GET',f'/api/catalogs/{cid}/products')
         self.assertEqual(status,200);self.assertEqual(products['model_count'],1)
+        from urllib.parse import quote
+        inquiry=f'/api/catalogs/{cid}/inquiry?q='+quote('全ての型番と価格を一覧にして')
+        status,answer=self.call('GET',inquiry)
+        self.assertEqual(status,200);self.assertEqual(answer['kind'],'prices');self.assertEqual(answer['occurrence_count'],1)
         self.login('reader','reader-demo')
         self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/products')[0],403)
         self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/products.csv')[0],403)
+        self.server.service.reader_preview=True
+        self.assertEqual(self.call('GET',inquiry)[1]['kind'],'restricted')
+        self.server.service.reader_preview=False
         self.assertEqual(self.call('GET','/api/catalogs/'+cid)[0],403)
         status,body=self.call('POST',f'/api/catalogs/{cid}/operations',{'version':1,'operation':{'type':'add_page'},'role':'editor'})
         self.assertEqual(status,403)

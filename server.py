@@ -109,6 +109,11 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(service.apply_operation(cid,actor,data.get('version'),data['operation']))
                     if action=='attachments' and mutation:
                         return self.send(service.attach(cid,actor,data.get('version'),data.get('filename'),decode_upload(data),data.get('submission_id')))
+                    if action in ('inquiry','inquiry.csv') and not mutation:
+                        result=service.inquire(cid,actor,query.get('q',[''])[0])
+                        if action=='inquiry':return self.send(result)
+                        from catalog_core.inquiry import inquiry_csv
+                        return self.send(inquiry_csv(result),content_type='text/csv; charset=utf-8',filename='catalog-answer.csv')
                     if action=='products' and not mutation:return self.send(service.products(cid,actor))
                     if action=='products.csv' and not mutation:
                         from catalog_core.products import product_csv

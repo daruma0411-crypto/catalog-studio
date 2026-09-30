@@ -1,3 +1,4 @@
+import {runInquiry} from './inquiry.js';
 import {productsHTML,productAction} from './products.js';
 import {esc,btn,badge,empty,field,textarea,roleName,threadHTML} from './ui.js';
 import {renderPaper,assetURL,estimateSplit,overflowCount} from './paper.js';
@@ -68,7 +69,7 @@ function render(){
  }
 }
 
-async function loadCatalog(id){if(ctx.state?.id!==id)ctx.submissionDraft={};ctx.state=await ctx.api('/api/catalogs/'+id);ctx.pageId=ctx.state.document.pages[0].id;const page=ctx.currentPage();const first=page.elements.find(e=>e.kind==='text'&&/18,500/.test(e.text))||page.elements.find(e=>e.kind==='text');ctx.selection=first?.id;ctx.searchResult=null;ctx.drafts={};render();}
+async function loadCatalog(id){if(ctx.state?.id!==id)ctx.submissionDraft={};ctx.state=await ctx.api('/api/catalogs/'+id);ctx.pageId=ctx.state.document.pages[0].id;const page=ctx.currentPage();const first=page.elements.find(e=>e.kind==='text'&&/18,500/.test(e.text))||page.elements.find(e=>e.kind==='text');ctx.selection=first?.id;ctx.searchResult=null;ctx.inquiryResult=null;ctx.drafts={};render();}
 async function refreshCatalogs(){ctx.catalogs=await ctx.api('/api/catalogs');if(!ctx.catalogs.length){ctx.state=null;render();return;}const id=ctx.catalogs.some(c=>c.id===ctx.state?.id)?ctx.state.id:ctx.catalogs[0].id;await loadCatalog(id);}
 async function login(user,password){
  if(loginPending)return;
@@ -76,7 +77,7 @@ async function login(user,password){
  loginPending=true;busy('編集室を開いています…');
  try{
   const session=await ctx.api('/api/login','POST',{username:user,password});
-  ctx.actor=session.actor;ctx.csrf=session.csrf;ctx.state=null;ctx.selection=null;ctx.searchResult=null;ctx.submissionDraft={};ctx.intakeFilter={};
+  ctx.actor=session.actor;ctx.csrf=session.csrf;ctx.state=null;ctx.selection=null;ctx.searchResult=null;ctx.inquiryResult=null;ctx.submissionDraft={};ctx.intakeFilter={};
   ctx.view=ctx.actor.role==='developer'?'source':'edit';
   // Remove the previous role's controls before awaiting its replacement data.
   render();
@@ -84,7 +85,7 @@ async function login(user,password){
  }catch(error){render();throw error;}
  finally{loginPending=false;busy(false);}
 }
-async function search(query=ctx.searchQuery){ctx.searchQuery=query;ctx.searchResult=await ctx.api(`/api/catalogs/${ctx.state.id}/search?q=${encodeURIComponent(query)}`);ctx.view='research';render();}
+async function search(query=ctx.searchQuery){return runInquiry(ctx,query);}
 function readFile(file){if(file.size>60*1024*1024)throw new Error('ファイルは60MB以下にしてください。');return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(new Error('ファイルを読み取れませんでした。'));r.readAsDataURL(file);});}
 async function upload(files,importing=false){captureSubmissionDraft(ctx);if(importing&&hasSubmissionDraft(ctx)&&!confirm('入力中の原稿を破棄して、別のカタログを取り込みますか？'))return;const uploadedIds=[];busy(importing?'IDMLを解析しています。画像と比較用紙面を準備します…':'原稿・素材を取り込んでいます…');try{for(const file of files){const content=await readFile(file);if(importing){ctx.state=await ctx.api('/api/catalogs','POST',{filename:file.name,content});ctx.submissionDraft={};ctx.catalogs=await ctx.api('/api/catalogs');ctx.pageId=ctx.state.document.pages[0].id;ctx.selection=null;ctx.view='edit';ctx.mode='reference';}else{ctx.state=await ctx.api(`/api/catalogs/${ctx.state.id}/attachments`,'POST',{filename:file.name,content,version:ctx.state.version});if(!ctx.state.uploaded_asset_id)throw new Error('添付資料の保存結果を確認できません。再読み込みして確認してください。');uploadedIds.push(ctx.state.uploaded_asset_id);}}if(!importing&&['source','page-source'].includes(ctx.view)){ctx.pageSourceAssetIds=[...new Set([...(ctx.pageSourceAssetIds||[]),...uploadedIds])];ctx.submissionDraft={...ctx.submissionDraft,asset_ids:[...new Set([...(ctx.submissionDraft?.asset_ids||[]),...uploadedIds])]};}render();notify(importing?'カタログを取り込みました。原版を保持しています。':'素材を保存しました。表データは「内容を見る」から確認できます。');}finally{busy(false);}}
 
@@ -107,6 +108,7 @@ function updateFlowPreview(){const el=ctx.element();if(!el||!$('flow-count'))ret
 
 async function act(action,target){
  if(loginPending)return;
+ if(action==='inquiry-review'){const id=target.dataset.id;await productAction(ctx,'product-open',target);return productAction(ctx,'product-review',{dataset:{id}});}
  if(action.startsWith('product-'))return productAction(ctx,action,target);
  if(action.startsWith('workflow-'))return workflowAction(ctx,action,target);
  if(action.startsWith('group-'))return groupAction(ctx,action,target);
