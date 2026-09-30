@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {productsHTML,reviewHTML,productAction} from '../static/products.js';
+const occurrence={id:'o',model:'RX-359NB',page_id:'p',page_label:'1',order:1,element_id:'f',source:{},text:'<script>bad</script>',status:'recheck',price_candidates:[{id:'x',amount:'9000',kind:'body',context:'¥9,000',relation:'same_frame'}],image_candidates:[],description_candidates:[],review:{prices:[{id:'x',kind:'body'}],price_state:'confirmed'}};
+const ctx={actor:{role:'editor'},state:{id:'c',version:2},productReport:{catalog_id:'c',revision:2,scope:'scope',model_count:1,occurrence_count:1,counts:{recheck:1},occurrences:[occurrence]}};
+assert.match(productsHTML(ctx),/価格の対応は未確定/);
+assert.doesNotMatch(productsHTML(ctx),/本体価格 ¥9,000/);
+assert.doesNotMatch(reviewHTML(ctx,occurrence),/data-product-price="x" checked/);
+assert.match(reviewHTML(ctx,occurrence),/&lt;script&gt;/);
+ctx.state.version=3;assert.doesNotMatch(productsHTML(ctx),/RX-359NB/);ctx.state.version=2;
+ctx.actor.role='developer';assert.match(reviewHTML(ctx,occurrence),/fieldset disabled/);assert.doesNotMatch(reviewHTML(ctx,occurrence),/確認内容を保存/);
+ctx.actor.role='reader';await assert.rejects(()=>productAction(ctx,'product-open',{}),/販促・開発/);
+console.log('PASS: stale prices excluded, stale selection reset, escaped evidence, role permissions');

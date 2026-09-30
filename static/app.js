@@ -1,3 +1,4 @@
+import {productsHTML,productAction} from './products.js';
 import {esc,btn,badge,empty,field,textarea,roleName,threadHTML} from './ui.js';
 import {renderPaper,assetURL,estimateSplit,overflowCount} from './paper.js';
 import {workspaceHTML,inspectorHTML} from './workspace.js';
@@ -26,6 +27,7 @@ const ctx={actor:null,csrf:'',state:null,catalogs:[],pageId:null,selection:null,
    else if(operation.type==='flow_text'){const c=this.state.changes.at(-1);this.pageId=c.destination_page_id;this.selection=c.continuation.id;}
    else if(operation.type==='add_page'){this.pageId=this.state.changes.at(-1).page_id;this.selection=null;this.view='edit';this.mode='html';this.groupMode=false;this.groupId=null;this.groupIds=[];}
    else if(this.selection){const p=this.state.document.pages.find(p=>p.elements.some(e=>e.id===this.selection));if(p)this.pageId=p.id;}
+   if(this.view==='products')this.productReport=await this.api(`/api/catalogs/${this.state.id}/products`);
    render();notify(message);return this.state;
   }finally{busy(false);}
  },
@@ -52,7 +54,7 @@ function render(){
  if(ctx.groupId&&!(ctx.state.document.groups||[]).some(g=>g.id===ctx.groupId))ctx.groupId=null;
  if(ctx.groupMode&&ctx.groupIds?.some(id=>!page.elements.some(e=>e.id===id&&!e.deleted))){ctx.groupMode=false;ctx.groupIds=[];ctx.groupId=null;}
  if(ctx.actor.role==='reader')ctx.mode='html';
- const content=ctx.view==='edit'?workspaceHTML(ctx):['source','page-source'].includes(ctx.view)?sourceHTML(ctx):ctx.view==='plan'?planHTML(ctx):ctx.view==='research'?researchHTML(ctx):handoffHTML(ctx);
+ const content=ctx.view==='edit'?workspaceHTML(ctx):['source','page-source'].includes(ctx.view)?sourceHTML(ctx):ctx.view==='plan'?planHTML(ctx):ctx.view==='research'?researchHTML(ctx):ctx.view==='products'?productsHTML(ctx):handoffHTML(ctx);
  root.innerHTML=headerHTML()+content;
  if(ctx.actor.role==='editor')root.querySelector('[data-act="undo"]').insertAdjacentHTML('afterend',btn('すべて元に戻す','reset-dialog','ghost danger'));
  if(ctx.view==='edit'){
@@ -105,6 +107,7 @@ function updateFlowPreview(){const el=ctx.element();if(!el||!$('flow-count'))ret
 
 async function act(action,target){
  if(loginPending)return;
+ if(action.startsWith('product-'))return productAction(ctx,action,target);
  if(action.startsWith('workflow-'))return workflowAction(ctx,action,target);
  if(action.startsWith('group-'))return groupAction(ctx,action,target);
  const el=ctx.element();
@@ -114,7 +117,7 @@ async function act(action,target){
  case 'import':showModal(`<h2>別のカタログを追加</h2><p>IDML、またはIDML・画像・PDFをまとめたZIPから、新しいカタログを登録します。</p><div class="scope">いま開いているカタログは上書きしません。登録後は上部のカタログ選択で切り替えられます。</div><p>現在のカタログへの原稿・Excel・画像の追加は「原稿・質疑応答」のアップロードを使ってください。</p>${btn('IDML・ZIPを選ぶ','choose-catalog','primary full')}`);return;
  case 'choose-catalog':closeModal();return $('catalog-upload').click();
  case 'nav':{captureSubmissionDraft(ctx);const view=target.dataset.view;if(['plan','source'].includes(view)){busy('最新のページと原稿を確認しています…');try{ctx.state=await ctx.api('/api/catalogs/'+ctx.state.id);ctx.view=view;render();}finally{busy(false);}return;}ctx.view=view;return render();}
- case 'reload':if(ctx.state){captureSubmissionDraft(ctx);const page=ctx.pageId;ctx.state=await ctx.api('/api/catalogs/'+ctx.state.id);ctx.pageId=page;render();notify('最新の保存内容を読み込みました。');}return;
+ case 'reload':if(ctx.view==='products')return productAction(ctx,'product-open',target);if(ctx.state){captureSubmissionDraft(ctx);const page=ctx.pageId;ctx.state=await ctx.api('/api/catalogs/'+ctx.state.id);ctx.pageId=page;render();notify('最新の保存内容を読み込みました。');}return;
  case 'rail-tab':ctx.railTab=target.dataset.tab;return render();
  case 'go-source':return act('nav',{dataset:{view:'source'}});
  case 'page-submission':{captureSubmissionDraft(ctx);if(hasSubmissionDraft(ctx)){if(!confirm('入力中の原稿があります。破棄して、このページの原稿を空欄から新しく入力しますか？'))return;ctx.submissionDraft={};}busy('対象ページを確認しています…');try{ctx.state=await ctx.api('/api/catalogs/'+ctx.state.id);if(!ctx.state.document.pages.some(p=>p.id===target.dataset.page))throw new Error('対象ページが変更されています。台割を更新してください。');ctx.submissionDraft={page_id:target.dataset.page};ctx.pageSourceId=target.dataset.page;ctx.pageSourceAssetIds=[];ctx.view='page-source';render();$('submission-form').scrollIntoView({behavior:'smooth',block:'start'});}finally{busy(false);}return;}

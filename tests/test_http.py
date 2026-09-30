@@ -43,7 +43,11 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.call('POST','/api/catalogs',body,origin='https://evil.example')[0],403)
         status,st=self.call('POST','/api/catalogs',body);self.assertEqual(status,200)
         cid=st['id']
+        status,products=self.call('GET',f'/api/catalogs/{cid}/products')
+        self.assertEqual(status,200);self.assertEqual(products['model_count'],1)
         self.login('reader','reader-demo')
+        self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/products')[0],403)
+        self.assertEqual(self.call('GET',f'/api/catalogs/{cid}/products.csv')[0],403)
         self.assertEqual(self.call('GET','/api/catalogs/'+cid)[0],403)
         status,body=self.call('POST',f'/api/catalogs/{cid}/operations',{'version':1,'operation':{'type':'add_page'},'role':'editor'})
         self.assertEqual(status,403)

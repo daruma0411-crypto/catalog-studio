@@ -10,6 +10,7 @@ from pathlib import Path
 from .importer import parse_idml,read_package
 from .operations import apply,now,uid,public_document
 from .search import find_occurrences
+from .products import extract_index,report,review_product
 from .store import Store,dump
 from .submissions import reconcile,may_edit,find_submission
 
@@ -86,7 +87,7 @@ class Service:
         if pdf:
             from .assets import add_pdf_reference
             add_pdf_reference(doc,pdf,self.assets_dir)
-        state={'document':doc,'changes':[],'submissions':[],'threads':[],'attachments':[]}
+        state={'document':doc,'changes':[],'submissions':[],'threads':[],'attachments':[],'product_index':extract_index(doc)}
         with self.store.connection(write=True) as db:
             db.execute('INSERT INTO catalogs(id,title,version,state,original,published,published_version,created) VALUES (?,?,?,?,?,?,?,?)',(cid,name,1,dump(state),dump(doc),None,None,now()))
         return self.get_catalog(cid,actor)
@@ -108,6 +109,11 @@ class Service:
         state=self.get_catalog(cid,actor)
         return {**find_occurrences(state['document'],query),'catalog_id':cid,'title':state['title'],'revision':state['version']}
 
+    def products(self,cid,actor):
+        if actor.role not in ('editor','developer'):raise PermissionError('商品候補は販促・開発部門で確認してください。')
+        state=self.get_catalog(cid,actor)
+        return {**report(state),'catalog_id':cid,'title':state['title'],'revision':state['version']}
+
     def apply_operation(self,cid,actor,expected_version,op):
         kind=op.get('type')
         developer_ops={'add_submission','submission_update','submission_assets','comment','reply','import_submissions'}
@@ -124,6 +130,8 @@ class Service:
             elif kind in ('create_group','move_group','ungroup'):
                 from .groups import apply_group
                 apply_group(state,actor,op)
+            elif kind=='product_review':
+                review_product(state,actor,op)
             elif kind=='reset_document':
                 original=json.loads(row['original'])
                 # Keep uploaded materials available for the next editing pass.
@@ -167,6 +175,8 @@ class Service:
                     if submission.get('paper_checked'):
                         submission['paper_checked']=False
                         submission['paper_recheck_reason']='紙面が変更されました。再確認してください。'
+            if kind in paper_ops or kind in ('create_group','ungroup'):
+                state['product_index']=extract_index(state['document'])
             db.execute('INSERT INTO events(catalog_id,version,actor,action,before_state,created) VALUES (?,?,?,?,?,?)',(cid,version,actor.id,kind,row['state'],now()))
             db.execute('UPDATE catalogs SET state=?,version=? WHERE id=?',(dump(state),version,cid))
         return self.get_catalog(cid,actor)
