@@ -127,6 +127,24 @@ def apply(state,actor,op):
             item['source_ref']={'asset_id':source['asset_id'],'sheet':text(source.get('sheet',''),200),'row':source['row']}
         state['submissions'].append(item)
         return
+    elif kind=='submission_review':
+        item=next((s for s in state['submissions'] if s['id']==op.get('submission_id')),None)
+        if item is None:raise ValueError('原稿が見つかりません。')
+        agreement=op.get('agreement',item.get('agreement','pending'))
+        if agreement not in ('pending','agreed'):raise ValueError('合意状態が不正です。')
+        checked=op.get('paper_checked',item.get('paper_checked',False))
+        if not isinstance(checked,bool):raise ValueError('確認状態が不正です。')
+        pid=op.get('page_id',item.get('review_page_id')) or None
+        if pid:find_page(doc,pid)
+        if checked and not pid:raise ValueError('確認した紙面のページを選んでください。')
+        item.update(agreement=agreement,paper_checked=checked,review_page_id=pid,reviewed_by=actor.name,reviewed_at=now())
+        return
+    elif kind=='submission_assets':
+        item=next((s for s in state['submissions'] if s['id']==op.get('submission_id')),None)
+        ids=op.get('asset_ids')
+        if item is None or not isinstance(ids,list) or any(not any(a['id']==aid for a in state['attachments']) for aid in ids):raise ValueError('原稿または資料が不正です。')
+        item['asset_ids']=list(dict.fromkeys(ids))
+        return
     elif kind=='submission_status':
         item=next((s for s in state['submissions'] if s['id']==op.get('submission_id')),None)
         status=op.get('status')
@@ -135,12 +153,18 @@ def apply(state,actor,op):
         return
     elif kind=='comment':
         eid=op.get('element_id');pid=op.get('page_id');sid=op.get('submission_id')
+        gid=op.get('group_id');group=None
+        if gid:
+            group=next((g for g in doc.get('groups',[]) if g['id']==gid),None)
+            if not group:raise ValueError('商品ブロックが見つかりません。')
+            pid=find_element(doc,group['element_ids'][0])[0]['id']
         if eid: pid=find_element(doc,eid)[0]['id']
         elif pid: find_page(doc,pid)
         if sid and not any(s['id']==sid for s in state['submissions']): raise ValueError('原稿が見つかりません。')
         destination=op.get('destination','production')
         if destination not in ('production','developer','editor'): raise ValueError('宛先が不正です。')
         item={'id':uid(),'element_id':eid,'page_id':pid,'submission_id':sid,'destination':destination,'status':'open','messages':[{'author':actor.name,'role':actor.role,'text':text(op.get('text'),10000,True),'created':now()}]}
+        if group:item.update(group_id=gid,group_name=group['name'],element_ids=list(group['element_ids']))
         state['threads'].append(item)
         return
     elif kind in ('reply','resolve_thread','reopen_thread'):

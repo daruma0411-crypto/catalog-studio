@@ -1,9 +1,13 @@
-import {esc,btn,field} from './ui.js';
+import {esc,btn,field,textarea,threadHTML} from './ui.js';
 
 export const members=ctx=>ctx.currentPage().elements.filter(e=>(ctx.groupIds||[]).includes(e.id)&&!e.deleted);
+function instructionPanel(ctx,group){
+ const page=ctx.currentPage(),threads=ctx.state.threads.filter(t=>t.group_id===group.id);
+ return `<hr><h3>① 制作会社へ移動を指示する</h3><p class="scope">対象：${esc(group.name)} ／ 元 p.${esc(page.printed_label||page.label||page.source_label)} ／ ${group.element_ids.length}要素</p><p class="muted">指示は紙面に印字しません。未登録のページ番号も指定できます。</p>${field('移動先（例：165ページ左下）','group-destination','')}${textarea('補足・移動後の空きや重なりの扱い','group-instruction','',3)}${btn('このブロックへの移動指示を保存','group-instruct','primary full')}<p class="muted">保存後は「制作への指示」にも表示されます。</p>${threads.map(t=>threadHTML(t,ctx)).join('')}<hr><h3>② 紙面上で配置を試す</h3><p class="muted">下の操作は紙面の配置を変更します。移動先の重なりを確認してください。</p>`;
+}
 export function groupInspector(ctx){
  const selected=members(ctx),group=(ctx.state.document.groups||[]).find(g=>g.id===ctx.groupId);
- return `<h2>${group?esc(group.name):'商品をまとめて選択'}</h2><p class="muted">ドラッグで完全に囲んだ要素を追加。クリックで追加・除外できます。離れた場所も選べます。</p><p style="margin:12px 0">${selected.length}個を選択 ${group?'／ 選択した要素をドラッグで一緒に移動':''}</p>${!group?field('商品ブロック名','group-name','商品ブロック'):''}<div class="button-row">${!group?btn('商品としてまとめる','group-save','primary',selected.length<2?'disabled':''):btn('選択内容を組み直す','group-edit','')}${btn('選択を終了','group-exit','ghost')}</div>${group?`<hr>${field('横の移動量（mm）','group-dx',0,'number')}${field('縦の移動量（mm）','group-dy',0,'number')}<label>移動先ページ</label><select id="group-page">${ctx.state.document.pages.map(p=>`<option value="${p.id}" ${p.id===ctx.pageId?'selected':''}>${esc(p.title)}</option>`).join('')}</select>${btn('まとめて移動','group-move','primary full')}${btn('グループを解除','group-ungroup','full')}`:''}<hr><p class="muted">不要な要素は下の一覧からも外せます。図形や共有の説明を含めるか確認してください。</p><div style="max-height:360px;overflow:auto">${selected.map(e=>`<button class="full" data-act="group-remove" data-id="${esc(e.id)}">− ${esc((e.text||e.name||'図形・罫線').slice(0,70))}</button>`).join('')}</div>`;
+ return `<h2>${group?esc(group.name):'商品をまとめて選択'}</h2><p class="muted">ドラッグで完全に囲んだ要素を追加。クリックで追加・除外できます。離れた場所も選べます。</p><p style="margin:12px 0">${selected.length}個を選択 ${group?'／ 選択した要素をドラッグで一緒に移動':''}</p>${!group?field('商品ブロック名','group-name','商品ブロック'):''}<div class="button-row">${!group?btn('商品としてまとめる','group-save','primary',selected.length<2?'disabled':''):btn('選択内容を組み直す','group-edit','')}${btn('選択を終了','group-exit','ghost')}</div>${group?`${instructionPanel(ctx,group)}${field('横の移動量（mm）','group-dx',0,'number')}${field('縦の移動量（mm）','group-dy',0,'number')}<label>移動先ページ</label><select id="group-page">${ctx.state.document.pages.map(p=>`<option value="${p.id}" ${p.id===ctx.pageId?'selected':''}>p.${esc(p.printed_label||p.label||p.source_label)} · ${esc(p.title)}</option>`).join('')}</select>${btn('まとめて移動','group-move','primary full')}${btn('グループを解除','group-ungroup','full')}`:''}<hr><p class="muted">不要な要素は下の一覧からも外せます。図形や共有の説明を含めるか確認してください。</p><div style="max-height:360px;overflow:auto">${selected.map(e=>`<button class="full" data-act="group-remove" data-id="${esc(e.id)}">− ${esc((e.text||e.name||'図形・罫線').slice(0,70))}</button>`).join('')}</div>`;
 }
 export function groupToolbar(ctx){
  const groups=(ctx.state.document.groups||[]).filter(g=>g.element_ids.some(id=>ctx.currentPage().elements.some(e=>e.id===id&&!e.deleted)));
@@ -11,6 +15,13 @@ export function groupToolbar(ctx){
 }
 export async function groupAction(ctx,action,target){
  const repaint=()=>{ctx.render();};
+  if(action==='group-instruct'){
+  const g=ctx.state.document.groups.find(g=>g.id===ctx.groupId),page=ctx.currentPage();
+  const destination=document.getElementById('group-destination').value.trim();
+  if(!destination){ctx.notify('移動先を入力してください。',true);return;}
+  const detail=document.getElementById('group-instruction').value;
+  await ctx.op({type:'comment',group_id:g.id,destination:'production',text:`【ブロック移動指示】${g.name}\n元ページ：p.${page.printed_label||page.label||page.source_label}\n移動先：${destination}\n${detail}`},'移動指示を保存しました。紙面の文章・配置は変更していません。');return;
+ }
  if(action==='group-start'){ctx.groupMode=true;ctx.groupId=null;ctx.groupIds=[];ctx.selection=null;ctx.mode='html';repaint();}
  if(action==='group-exit'){ctx.groupMode=false;ctx.groupId=null;ctx.groupIds=[];repaint();}
  if(action==='group-open'){const g=ctx.state.document.groups.find(g=>g.id===target.dataset.id);ctx.groupMode=true;ctx.groupId=g.id;ctx.groupIds=[...g.element_ids];ctx.selection=null;ctx.mode='html';repaint();}

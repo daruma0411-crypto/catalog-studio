@@ -106,7 +106,7 @@ class Service:
 
     def apply_operation(self,cid,actor,expected_version,op):
         kind=op.get('type')
-        developer_ops={'add_submission','comment','reply'}
+        developer_ops={'add_submission','submission_assets','comment','reply'}
         if actor.role!='editor' and not (actor.role=='developer' and kind in developer_ops): raise PermissionError('この操作を行う権限がありません。')
         if isinstance(expected_version,bool) or not isinstance(expected_version,int): raise ValueError('版番号が不正です。')
         with self.store.connection(write=True) as db:
@@ -144,6 +144,15 @@ class Service:
                 db.execute('UPDATE catalogs SET published=?,published_version=? WHERE id=?',(dump(public_document(state['document'])),version,cid))
             else:
                 apply(state,actor,op)
+            paper_ops={'edit_text','replace_text','move','delete','restore','replace_image','flow_text','add_text','add_page','rename_page','delete_page','reorder_pages','move_group','reset_document'}
+            if kind in paper_ops:
+                page_ids={p['id'] for p in state['document']['pages']}
+                for submission in state['submissions']:
+                    if submission.get('review_page_id') not in page_ids:
+                        submission['review_page_id']=None
+                    if submission.get('paper_checked'):
+                        submission['paper_checked']=False
+                        submission['paper_recheck_reason']='紙面が変更されました。再確認してください。'
             db.execute('INSERT INTO events(catalog_id,version,actor,action,before_state,created) VALUES (?,?,?,?,?,?)',(cid,version,actor.id,kind,row['state'],now()))
             db.execute('UPDATE catalogs SET state=?,version=? WHERE id=?',(dump(state),version,cid))
         return self.get_catalog(cid,actor)
