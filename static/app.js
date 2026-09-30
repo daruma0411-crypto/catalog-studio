@@ -3,6 +3,7 @@ import {renderPaper,assetURL,estimateSplit,overflowCount} from './paper.js';
 import {workspaceHTML,inspectorHTML} from './workspace.js';
 import {sourceHTML,planHTML,researchHTML,handoffHTML} from './views.js';
 import {groupInspector,groupToolbar,groupAction} from './groups.js';
+import {captureSubmissionDraft,hasSubmissionDraft} from './intake_pages.js';
 import {workflowAction,workflowChange,workflowFilter} from './submissions.js';
 
 const root=document.getElementById('app'),modal=document.getElementById('modal');
@@ -39,10 +40,11 @@ function closeModal(){modal.close();}
 
 function loginHTML(){return `<main class="login"><div class="row"><div class="brand-mark">編</div><strong>カタログ編集室</strong>${badge('ローカル実証版','neutral')}</div><div class="hero"><h1>届いた原稿から、<br>伝わる紙面と指示へ。</h1><p>開発からの情報を受け取り、紙面で試し、制作へ渡す。<br>商品情報を探すときも、掲載された場所まで戻れます。</p></div><div class="login-grid"><section class="demo-roles">${Object.entries(demo).map(([r])=>`<button class="role-choice" data-act="demo-login" data-role="${r}"><div><strong>${roleName(r)}として開く</strong><small>${{editor:'原稿確認・紙面編集・台割・制作指示',developer:'原稿と素材の登録・質疑応答',reader:'共有カタログ閲覧・検索・ダウンロード'}[r]}</small></div><span class="push">→</span></button>`).join('')}</section><section class="panel"><h3>アカウントでログイン</h3><form id="login-form">${field('ユーザー名','username','promo')}${field('パスワード','password','promo-demo','password')}<button class="primary full" type="submit">ログイン</button></form><p class="login-foot">このPC内の実証用アカウントです。上の役割ボタンでも切り替えられます。本番向けSSO・組織管理は含みません。</p></section></div></main>`;}
 
-function headerHTML(){const st=ctx.state;const tabs=ctx.actor.role==='editor'?[['source','原稿・質疑応答'],['edit','紙面を編集'],['plan','台割'],['research','調査・データ活用'],['handoff','制作への指示']]:ctx.actor.role==='developer'?[['source','原稿・質疑応答'],['edit','紙面を確認'],['research','調査']]:[['edit','カタログを閲覧'],['research','調査・データ活用']];return `<header class="header"><div class="brand-mark">編</div><div class="header-title"><strong>カタログ編集室</strong><small>情報を受け取り、紙面で考える</small></div><select id="catalog-select" aria-label="カタログ">${ctx.catalogs.map(c=>`<option value="${c.id}" ${c.id===st?.id?'selected':''}>${esc(c.title)}</option>`).join('')||'<option>カタログなし</option>'}</select>${ctx.actor.role==='editor'?'<details class="catalog-menu"><summary>カタログ管理</summary>'+btn('別カタログを追加（IDML・ZIP）','import','ghost')+'</details>':''}<div class="push user"><strong>${esc(ctx.actor.name)}</strong><small>ローカル実証版</small></div><select id="account-select" aria-label="実証用アカウント" style="width:150px">${Object.keys(demo).map(r=>`<option value="${r}" ${ctx.actor.role===r?'selected':''}>${roleName(r)}</option>`).join('')}</select>${btn('ログアウト','logout','ghost')}</header>${st?`<nav class="nav">${tabs.map(([v,label])=>btn(label+(v==='handoff'?` <span class="badge neutral">${st.changes.length}</span>`:''),'nav',ctx.view===v?'active':'',`data-view="${v}"`)).join('')}<span class="save-state push">保存済み · 版 ${st.version}${ctx.actor.role==='reader'?'（共有版）':''}</span>${ctx.actor.role==='editor'?btn('元に戻す','undo','ghost',!st.can_undo?'disabled':''):''}${btn('更新','reload','ghost')}</nav>`:''}<input type="file" id="catalog-upload" accept=".zip,.idml" hidden>`;}
+function headerHTML(){const st=ctx.state;const tabs=ctx.actor.role==='editor'?[['source','原稿・質疑応答'],['edit','紙面を編集'],['plan','台割'],['research','調査・データ活用'],['handoff','制作への指示']]:ctx.actor.role==='developer'?[['source','原稿・質疑応答'],['plan','台割・原稿を入れる'],['edit','紙面を確認'],['research','調査']]:[['edit','カタログを閲覧'],['research','調査・データ活用']];return `<header class="header"><div class="brand-mark">${ctx.actor.role==='developer'?'開':ctx.actor.role==='editor'?'販':'覧'}</div><div class="header-title"><strong>${ctx.actor.role==='developer'?'開発部門の原稿室':ctx.actor.role==='editor'?'販促部門の編集室':'カタログ閲覧室'}</strong><small>${ctx.actor.role==='developer'?'原稿・資料を渡す ／ 質問に答える':ctx.actor.role==='editor'?'原稿を受け取り、紙面と制作指示をつくる':'公開された製品情報を使う'}</small></div><select id="catalog-select" aria-label="カタログ">${ctx.catalogs.map(c=>`<option value="${c.id}" ${c.id===st?.id?'selected':''}>${esc(c.title)}</option>`).join('')||'<option>カタログなし</option>'}</select>${ctx.actor.role==='editor'?'<details class="catalog-menu"><summary>カタログ管理</summary>'+btn('別カタログを追加（IDML・ZIP）','import','ghost')+'</details>':''}<div class="push user"><strong>${esc(ctx.actor.name)}</strong><small>ローカル実証版</small></div><select id="account-select" aria-label="実証用アカウント" style="width:150px">${Object.keys(demo).map(r=>`<option value="${r}" ${ctx.actor.role===r?'selected':''}>${roleName(r)}</option>`).join('')}</select>${btn('ログアウト','logout','ghost')}</header>${st?`<nav class="nav">${tabs.map(([v,label])=>btn(label+(v==='handoff'?` <span class="badge neutral">${st.changes.length}</span>`:''),'nav',ctx.view===v?'active':'',`data-view="${v}"`)).join('')}<span class="save-state push">保存済み · 版 ${st.version}${ctx.actor.role==='reader'?'（共有版）':''}</span>${ctx.actor.role==='editor'?btn('元に戻す','undo','ghost',!st.can_undo?'disabled':''):''}${btn('更新','reload','ghost')}</nav>`:''}<input type="file" id="catalog-upload" accept=".zip,.idml" hidden>`;}
 
 function render(){
  resizeObserver?.disconnect();
+ document.body.dataset.role=ctx.actor?.role||'guest';
  if(!ctx.actor){root.innerHTML=loginHTML();return;}
  if(!ctx.state){root.innerHTML=headerHTML()+`<main class="blank-app"><section class="panel"><h1>${ctx.actor.role==='reader'?'まだ共有されたカタログがありません':'カタログから始めましょう'}</h1><p class="empty">${ctx.actor.role==='reader'?'販促担当が社内閲覧用の版を共有すると、ここから閲覧・検索できます。':'IDML、またはIDML・画像・PDFをまとめたZIPを取り込めます。原版を残して編集を始めます。'}</p>${ctx.actor.role==='editor'?btn('IDML・ZIPを取り込む','import','primary'):''}</section></main>`;return;}
  const page=ctx.currentPage();ctx.pageId=page.id;
@@ -64,14 +66,15 @@ function render(){
  }
 }
 
-async function loadCatalog(id){ctx.state=await ctx.api('/api/catalogs/'+id);ctx.pageId=ctx.state.document.pages[0].id;const page=ctx.currentPage();const first=page.elements.find(e=>e.kind==='text'&&/18,500/.test(e.text))||page.elements.find(e=>e.kind==='text');ctx.selection=first?.id;ctx.searchResult=null;ctx.drafts={};render();}
+async function loadCatalog(id){if(ctx.state?.id!==id)ctx.submissionDraft={};ctx.state=await ctx.api('/api/catalogs/'+id);ctx.pageId=ctx.state.document.pages[0].id;const page=ctx.currentPage();const first=page.elements.find(e=>e.kind==='text'&&/18,500/.test(e.text))||page.elements.find(e=>e.kind==='text');ctx.selection=first?.id;ctx.searchResult=null;ctx.drafts={};render();}
 async function refreshCatalogs(){ctx.catalogs=await ctx.api('/api/catalogs');if(!ctx.catalogs.length){ctx.state=null;render();return;}const id=ctx.catalogs.some(c=>c.id===ctx.state?.id)?ctx.state.id:ctx.catalogs[0].id;await loadCatalog(id);}
 async function login(user,password){
  if(loginPending)return;
+ if(hasSubmissionDraft(ctx)&&!confirm('入力中の原稿はまだ登録されていません。破棄してアカウントを切り替えますか？')){if($('account-select'))$('account-select').value=ctx.actor.role;return;}
  loginPending=true;busy('編集室を開いています…');
  try{
   const session=await ctx.api('/api/login','POST',{username:user,password});
-  ctx.actor=session.actor;ctx.csrf=session.csrf;ctx.state=null;ctx.selection=null;ctx.searchResult=null;
+  ctx.actor=session.actor;ctx.csrf=session.csrf;ctx.state=null;ctx.selection=null;ctx.searchResult=null;ctx.submissionDraft={};ctx.intakeFilter={};
   ctx.view=ctx.actor.role==='developer'?'source':ctx.actor.role==='reader'?'research':'edit';
   // Remove the previous role's controls before awaiting its replacement data.
   render();
@@ -81,7 +84,7 @@ async function login(user,password){
 }
 async function search(query=ctx.searchQuery){ctx.searchQuery=query;ctx.searchResult=await ctx.api(`/api/catalogs/${ctx.state.id}/search?q=${encodeURIComponent(query)}`);ctx.view='research';render();}
 function readFile(file){if(file.size>60*1024*1024)throw new Error('ファイルは60MB以下にしてください。');return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(new Error('ファイルを読み取れませんでした。'));r.readAsDataURL(file);});}
-async function upload(files,importing=false){busy(importing?'IDMLを解析しています。画像と比較用紙面を準備します…':'原稿・素材を取り込んでいます…');try{for(const file of files){const content=await readFile(file);if(importing){ctx.state=await ctx.api('/api/catalogs','POST',{filename:file.name,content});ctx.catalogs=await ctx.api('/api/catalogs');ctx.pageId=ctx.state.document.pages[0].id;ctx.selection=null;ctx.view='edit';ctx.mode='reference';}else{ctx.state=await ctx.api(`/api/catalogs/${ctx.state.id}/attachments`,'POST',{filename:file.name,content,version:ctx.state.version});}}render();notify(importing?'カタログを取り込みました。原版を保持しています。':'素材を保存しました。表データは「内容を見る」から確認できます。');}finally{busy(false);}}
+async function upload(files,importing=false){captureSubmissionDraft(ctx);if(importing&&hasSubmissionDraft(ctx)&&!confirm('入力中の原稿を破棄して、別のカタログを取り込みますか？'))return;const beforeAssets=new Set(ctx.state?.attachments?.map(a=>a.id)||[]);busy(importing?'IDMLを解析しています。画像と比較用紙面を準備します…':'原稿・素材を取り込んでいます…');try{for(const file of files){const content=await readFile(file);if(importing){ctx.state=await ctx.api('/api/catalogs','POST',{filename:file.name,content});ctx.submissionDraft={};ctx.catalogs=await ctx.api('/api/catalogs');ctx.pageId=ctx.state.document.pages[0].id;ctx.selection=null;ctx.view='edit';ctx.mode='reference';}else{ctx.state=await ctx.api(`/api/catalogs/${ctx.state.id}/attachments`,'POST',{filename:file.name,content,version:ctx.state.version});}}if(!importing&&ctx.view==='source'){ctx.submissionDraft={...ctx.submissionDraft,asset_ids:[...new Set([...(ctx.submissionDraft?.asset_ids||[]),...ctx.state.attachments.filter(a=>!beforeAssets.has(a.id)).map(a=>a.id)])]};}render();notify(importing?'カタログを取り込みました。原版を保持しています。':'素材を保存しました。表データは「内容を見る」から確認できます。');}finally{busy(false);}}
 
 function previewAsset(a){
  if(a.kind==='spreadsheet'){
@@ -107,13 +110,14 @@ async function act(action,target){
  const el=ctx.element();
  switch(action){
  case 'demo-login':return login(...demo[target.dataset.role]);
- case 'logout':await ctx.api('/api/logout','POST',{});ctx.actor=null;ctx.state=null;return render();
+ case 'logout':if(hasSubmissionDraft(ctx)&&!confirm('入力中の原稿を破棄してログアウトしますか？'))return;await ctx.api('/api/logout','POST',{});ctx.actor=null;ctx.state=null;ctx.submissionDraft={};return render();
  case 'import':showModal(`<h2>別のカタログを追加</h2><p>IDML、またはIDML・画像・PDFをまとめたZIPから、新しいカタログを登録します。</p><div class="scope">いま開いているカタログは上書きしません。登録後は上部のカタログ選択で切り替えられます。</div><p>現在のカタログへの原稿・Excel・画像の追加は「原稿・質疑応答」のアップロードを使ってください。</p>${btn('IDML・ZIPを選ぶ','choose-catalog','primary full')}`);return;
  case 'choose-catalog':closeModal();return $('catalog-upload').click();
- case 'nav':ctx.view=target.dataset.view;return render();
- case 'reload':if(ctx.state){const page=ctx.pageId;ctx.state=await ctx.api('/api/catalogs/'+ctx.state.id);ctx.pageId=page;render();notify('最新の保存内容を読み込みました。');}return;
+ case 'nav':{captureSubmissionDraft(ctx);const view=target.dataset.view;if(['plan','source'].includes(view)){busy('最新のページと原稿を確認しています…');try{ctx.state=await ctx.api('/api/catalogs/'+ctx.state.id);ctx.view=view;render();}finally{busy(false);}return;}ctx.view=view;return render();}
+ case 'reload':if(ctx.state){captureSubmissionDraft(ctx);const page=ctx.pageId;ctx.state=await ctx.api('/api/catalogs/'+ctx.state.id);ctx.pageId=page;render();notify('最新の保存内容を読み込みました。');}return;
  case 'rail-tab':ctx.railTab=target.dataset.tab;return render();
- case 'go-source':ctx.view='source';return render();
+ case 'go-source':return act('nav',{dataset:{view:'source'}});
+ case 'page-submission':{captureSubmissionDraft(ctx);if(hasSubmissionDraft(ctx)&&ctx.submissionDraft.page_id!==target.dataset.page){if(!confirm('別ページ向けに入力中の原稿があります。破棄して、選んだページの原稿を新しく入力しますか？'))return;ctx.submissionDraft={};}busy('対象ページを確認しています…');try{ctx.state=await ctx.api('/api/catalogs/'+ctx.state.id);if(!ctx.state.document.pages.some(p=>p.id===target.dataset.page))throw new Error('対象ページが変更されています。台割を更新してください。');ctx.submissionDraft={...ctx.submissionDraft,page_id:target.dataset.page};ctx.view='source';render();$('submission-form').scrollIntoView({behavior:'smooth',block:'start'});}finally{busy(false);}return;}
  case 'open-page':ctx.pageId=target.dataset.page;ctx.selection=null;ctx.groupMode=false;ctx.groupId=null;ctx.groupIds=[];ctx.view='edit';return render();
  case 'source-detail':ctx.view='source';render();document.getElementById('submission-'+target.dataset.submission)?.scrollIntoView({behavior:'smooth'});return;
  case 'locate':{
@@ -147,7 +151,7 @@ async function act(action,target){
  case 'add-page-comment':return ctx.op({type:'comment',page_id:ctx.pageId,destination:$('page-comment-destination').value,text:$('page-comment').value},'このページへの指示を記録しました。制作への指示からも確認できます。');
  case 'reply':return ctx.op({type:'reply',thread_id:target.dataset.thread,text:$('reply-'+target.dataset.thread).value},'回答を記録しました。解決状態は別に確認します。');
  case 'resolve-thread':return ctx.op({type:target.dataset.status==='open'?'resolve_thread':'reopen_thread',thread_id:target.dataset.thread});
- case 'add-submission':return ctx.op({type:'add_submission',title:$('submission-title').value,target:$('submission-target').value,text:$('submission-text').value},'受け取り原稿を登録しました。');
+ case 'add-submission':{captureSubmissionDraft(ctx);await ctx.op({type:'add_submission',...ctx.submissionDraft},'対象ページに原稿を登録しました。販促・開発の両方から確認できます。');ctx.submissionDraft={};render();return;}
  case 'submission-search':return search(target.dataset.target||ctx.searchQuery);
  case 'submission-question':case 'general-question':showModal(`<h2>原稿について確認する</h2><label for="question-to">宛先</label><select id="question-to"><option value="developer">開発部門へ</option><option value="editor">販促担当へ</option><option value="production">制作会社へ</option></select>${textarea('確認したいこと','question-text','',4)}${btn('確認事項を記録','confirm-question','primary full',`data-submission="${target.dataset.submission||''}"`)}`);return;
  case 'confirm-question':{const op={type:'comment',text:$('question-text').value,destination:$('question-to').value,submission_id:target.dataset.submission||null};closeModal();return ctx.op(op,'確認事項を記録しました。');}
@@ -163,12 +167,13 @@ async function act(action,target){
 
 document.addEventListener('click',event=>{const target=event.target.closest('[data-act]');if(target&&!target.disabled){event.preventDefault();Promise.resolve(act(target.dataset.act,target)).catch(error=>notify(error.message,true));}});
 document.addEventListener('submit',event=>{if(event.target.id==='workflow-filters'){event.preventDefault();workflowFilter(ctx);return;}if(event.target.id==='login-form'){event.preventDefault();login($('username').value,$('password').value).catch(e=>notify(e.message,true));}if(event.target.id==='search-form'){event.preventDefault();search($('search-query').value).catch(e=>notify(e.message,true));}});
-document.addEventListener('input',event=>{if(event.target.id==='edit-text'&&ctx.selection)ctx.drafts[ctx.selection]=event.target.value;if(event.target.id==='flow-count')updateFlowPreview();});
+document.addEventListener('input',event=>{if(event.target.closest('#submission-form'))captureSubmissionDraft(ctx);if(event.target.id==='edit-text'&&ctx.selection)ctx.drafts[ctx.selection]=event.target.value;if(event.target.id==='flow-count')updateFlowPreview();});
 document.addEventListener('change',event=>{
  if(loginPending)return;
  const target=event.target;
+ if(target.closest('#submission-form'))captureSubmissionDraft(ctx);
  (async()=>{
-  if(target.id==='catalog-select')return loadCatalog(target.value);
+  if(target.id==='catalog-select'){if(hasSubmissionDraft(ctx)&&!confirm('入力中の原稿を破棄して、カタログを切り替えますか？')){target.value=ctx.state.id;return;}return loadCatalog(target.value);}
   if(workflowChange(ctx,target))return;
   if(target.dataset.review){const field=target.dataset.review;const op={type:'submission_review',submission_id:target.dataset.submission,[field]:field==='paper_checked'?target.value==='true':target.value};if(field==='page_id')op.paper_checked=false;return ctx.op(op,'確認状況を保存しました。');}
   if(target.id==='account-select')return login(...demo[target.value]);
@@ -180,6 +185,6 @@ document.addEventListener('change',event=>{
  })().catch(e=>{if(target.dataset.review||target.dataset.submissionStatus||target.dataset.changeStatus)render();notify(e.message,true);});
 });
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='s'&&ctx.view==='edit'&&ctx.actor?.role==='editor'&&!modal.open){event.preventDefault();if($('edit-text'))act('save-text',{}).catch(e=>notify(e.message,true));}});
-window.addEventListener('beforeunload',event=>{if(Object.entries(ctx.drafts).some(([id,value])=>ctx.state?.document.pages.flatMap(p=>p.elements).find(e=>e.id===id)?.text!==value)){event.preventDefault();event.returnValue='';}});
+window.addEventListener('beforeunload',event=>{if(hasSubmissionDraft(ctx)||Object.entries(ctx.drafts).some(([id,value])=>ctx.state?.document.pages.flatMap(p=>p.elements).find(e=>e.id===id)?.text!==value)){event.preventDefault();event.returnValue='';}});
 
 try{const session=await ctx.api('/api/session');ctx.actor=session.actor;ctx.csrf=session.csrf;ctx.view=ctx.actor.role==='developer'?'source':ctx.actor.role==='reader'?'research':'edit';await refreshCatalogs();}catch{ctx.actor=null;render();}

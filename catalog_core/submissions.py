@@ -2,9 +2,9 @@
 import copy
 import re
 from datetime import date
-from .operations import now,text
+from .operations import now,text,find_page
 
-CONTENT_FIELDS=('title','target','text','asset_ids')
+CONTENT_FIELDS=('title','target','text','asset_ids','page_id')
 META_FIELDS=('assignee','due_date','ready_date')
 
 def find_submission(state,sid):
@@ -28,6 +28,11 @@ def update_submission(state,actor,op):
     if actor.role!='editor' and any(k in op for k in META_FIELDS):raise PermissionError('担当・期限は販促担当が設定します。')
     for key in ('title','target','text'):
         if key in op:item[key]=text(op[key],50000 if key=='text' else 200,key!='target')
+    if 'page_id' in op:
+        pid=op['page_id'] or None
+        if pid:find_page(state['document'],pid)
+        item['page_id']=pid
+        if pid:item.pop('previous_page',None)
     if 'assignee' in op:item['assignee']=text(op['assignee'],100).strip()
     for key in ('due_date','ready_date'):
         if key in op:item[key]=date_value(op[key])
@@ -46,7 +51,10 @@ def reconcile(before,state,actor,reason=''):
             item.setdefault('author_id',actor.id);item.setdefault('content_revision',1)
             item.setdefault('updated_at',item.get('created',now()));item.setdefault('updated_by',actor.name)
             continue
-        changed=[k for k in CONTENT_FIELDS+META_FIELDS if old.get(k,[] if k=='asset_ids' else '')!=item.get(k,[] if k=='asset_ids' else '')]
+        def value(record,key):
+            if key=='page_id':return record.get(key) or None
+            return record.get(key,[] if key=='asset_ids' else '')
+        changed=[k for k in CONTENT_FIELDS+META_FIELDS if value(old,k)!=value(item,k)]
         if not changed:continue
         content=any(k in CONTENT_FIELDS for k in changed)
         revision=old.get('content_revision',1)

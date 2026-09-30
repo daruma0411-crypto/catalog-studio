@@ -108,6 +108,7 @@ def apply(state,actor,op):
         p=find_page(doc,op.get('page_id'));entry['before']=p['title'];p['title']=text(op.get('title'),200,True);p['title_auto']=False;entry.update(page_id=p['id'],after=p['title'])
     elif kind=='delete_page':
         p=find_page(doc,op.get('page_id'))
+        if any(s.get('page_id')==p['id'] for s in state['submissions']):raise ValueError('このページに原稿が登録されています。原稿の対象ページを変更または未指定にしてから削除してください。')
         if len(doc['pages'])==1: raise ValueError('最後の1ページは削除できません。')
         if any(not e.get('deleted') for e in p['elements']): raise ValueError('内容が残っています。要素を移動または削除指定してからページを削除してください。')
         if any(t.get('page_id')==p['id'] and t['status']=='open' for t in state['threads']): raise ValueError('未解決のコメントが残っています。')
@@ -118,6 +119,9 @@ def apply(state,actor,op):
         entry['before']=[p['id'] for p in doc['pages']];doc['pages']=[find_page(doc,i) for i in ids];entry['after']=ids
     elif kind=='add_submission':
         item={'id':uid(),'title':text(op.get('title'),200,True),'text':text(op.get('text'),required=True),'target':text(op.get('target',''),200),'status':'received','author':actor.name,'created':now(),'asset_ids':[]}
+        pid=op.get('page_id') or None
+        if pid:find_page(doc,pid)
+        item['page_id']=pid
         asset_ids=op.get('asset_ids',[])
         if not isinstance(asset_ids,list) or len(asset_ids)>30 or any(not any(a['id']==aid for a in state['attachments']) for aid in asset_ids):raise ValueError('原稿の添付資料が不正です。')
         item['asset_ids']=list(dict.fromkeys(asset_ids))

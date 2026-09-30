@@ -137,6 +137,11 @@ class Service:
                             thread['element_id']=None;thread['page_id']=None
                 for submission in state['submissions']:
                     if submission['status']=='applied':submission['status']='checking'
+                    pid=submission.get('page_id')
+                    if pid and pid not in pages:
+                        old_page=next((p for p in state['document']['pages'] if p['id']==pid),{})
+                        submission['previous_page']={'id':pid,'title':old_page.get('title','削除されたページ')}
+                        submission['page_id']=None
                 state['document']=original
                 state['changes']=[]
             elif kind=='import_submissions':

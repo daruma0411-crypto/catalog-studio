@@ -41,9 +41,9 @@ def instruction_package(service,cid,actor):
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
         z.writestr('manifest.json',json.dumps(manifest,ensure_ascii=False,indent=2))
         z.writestr('instructions.json',json.dumps({**manifest,'changes':state['changes'],'threads':state['threads'],'submissions':state['submissions']},ensure_ascii=False,indent=2))
-        submission_rows=[['原稿ID','件名','対象','本文','原稿改訂','担当','回答・確認期限','原稿確定予定日','合意','合意した原稿改訂','反映状況','紙面確認','確認した原稿改訂','更新日時','取り込み元','取り込み原稿ID']]
+        submission_rows=[['原稿ID','件名','対象','本文','原稿改訂','担当','回答・確認期限','原稿確定予定日','合意','合意した原稿改訂','反映状況','紙面確認','確認した原稿改訂','更新日時','取り込み元','取り込み原稿ID','対象ページID','対象ページ名']]
         for s in state['submissions']:
-            submission_rows.append([s['id'],s['title'],s.get('target',''),s['text'],s.get('content_revision',1),s.get('assignee',''),s.get('due_date',''),s.get('ready_date',''),AGREEMENTS.get(s.get('agreement'),'未合意'),s.get('agreed_content_revision',''),STATUSES.get(s['status'],s['status']),'確認済み' if s.get('paper_checked') else '未確認',s.get('checked_content_revision',''),s.get('updated_at',s.get('created','')),s.get('import_ref',{}).get('namespace',''),s.get('import_ref',{}).get('key','')])
+            submission_rows.append([s['id'],s['title'],s.get('target',''),s['text'],s.get('content_revision',1),s.get('assignee',''),s.get('due_date',''),s.get('ready_date',''),AGREEMENTS.get(s.get('agreement'),'未合意'),s.get('agreed_content_revision',''),STATUSES.get(s['status'],s['status']),'確認済み' if s.get('paper_checked') else '未確認',s.get('checked_content_revision',''),s.get('updated_at',s.get('created','')),s.get('import_ref',{}).get('namespace',''),s.get('import_ref',{}).get('key',''),s.get('page_id',''),pages.get(s.get('page_id'),(None,{}))[1].get('title','未指定')])
         z.writestr('submissions.csv',csv_bytes(submission_rows))
         rows=[['番号','操作','ページ','要素','変更前','変更後','理由','状態','日時']]
         for i,c in enumerate(state['changes'],1):
@@ -56,6 +56,9 @@ def instruction_package(service,cid,actor):
         body=f'<h1>制作への指示原稿</h1><p>{escape(state["title"])} · 版 {state["version"]}</p><p>未解決の確認事項：{manifest["unresolved_threads"]}件。保留事項と確定指示を分けて確認してください。</p>'
         body+='<h2>原稿管理表</h2><p><a href="submissions.csv">原稿・担当・期限・確認状態の一覧を保存</a></p>'
         for s in state['submissions']:
+            pi,page=pages.get(s.get('page_id'),(None,{}))
+            page_context=f'<p>対象ページ：掲載順 {pi} · {escape(page.get("title",""))} <a href="pages/edited-{pi}.html">紙面を開く</a></p>' if pi else '<p>対象ページ：未指定</p>'
+            body+=page_context
             body+=f'<section><h3>{escape(s["title"])} · 原稿改訂 {s.get("content_revision",1)}</h3><p>担当：{escape(s.get("assignee") or "未設定")} ／ 回答・確認期限：{escape(s.get("due_date") or "未設定")} ／ 原稿確定予定日：{escape(s.get("ready_date") or "未設定")}</p><p>{AGREEMENTS.get(s.get("agreement"),"未合意")} ／ {STATUSES.get(s["status"],escape(s["status"]))} ／ 紙面：{"確認済み" if s.get("paper_checked") else "未確認"}</p><pre>{escape(s["text"])}</pre>'
             body+='<ul>'+''.join(f'<li><a href="assets/{escape(aid,quote=True)}">{escape(next((a["name"] for a in state["attachments"] if a["id"]==aid),aid))}</a></li>' for aid in s.get('asset_ids',[]))+'</ul></section>'
         body+='<h2>紙面</h2><ul>'

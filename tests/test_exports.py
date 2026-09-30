@@ -47,7 +47,7 @@ class ExportTests(unittest.TestCase):
     def test_handoff_includes_submission_schedule_and_page_context(self):
         from catalog_core.exports import instruction_package
         s=self.state;pid=s['document']['pages'][0]['id']
-        s=self.service.apply_operation(s['id'],self.actor,s['version'],{'type':'add_submission','title':'確認原稿','text':'依頼内容'})
+        s=self.service.apply_operation(s['id'],self.actor,s['version'],{'type':'add_submission','title':'確認原稿','text':'依頼内容','page_id':pid})
         sid=s['submissions'][0]['id']
         s=self.service.apply_operation(s['id'],self.actor,s['version'],{'type':'submission_update','submission_id':sid,'assignee':'担当A','due_date':'2026-10-01'})
         s=self.service.apply_operation(s['id'],self.actor,s['version'],{'type':'comment','page_id':pid,'text':'このページへの指示'})
@@ -55,9 +55,9 @@ class ExportTests(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(package)) as z:
             self.assertIn('submissions.csv',z.namelist())
             csv=z.read('submissions.csv').decode('utf-8-sig')
-            self.assertIn('担当A',csv);self.assertIn('2026-10-01',csv)
+            self.assertIn('担当A',csv);self.assertIn('2026-10-01',csv);self.assertIn('対象ページID',csv);self.assertIn(pid,csv)
             html=z.read('instructions.html').decode()
-            self.assertIn('このページへの指示',html);self.assertIn('p.12',html)
+            self.assertIn('このページへの指示',html);self.assertIn('p.12',html);self.assertIn('対象ページ：掲載順 1',html)
 
     def test_missing_attachment_cannot_be_silently_exported(self):
         from catalog_core.exports import instruction_package
